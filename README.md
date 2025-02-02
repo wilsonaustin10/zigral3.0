@@ -24,17 +24,20 @@ zigral/
 ## Setup
 
 1. Clone the repository
-2. Create a Python virtual environment:
+2. Install Poetry (if not already installed):
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   curl -sSL https://install.python-poetry.org | python3 -
    ```
 3. Install dependencies:
    ```bash
-   pip install -r requirements.txt
+   poetry install
    ```
 4. Copy `.env.example` to `.env` and configure your environment variables
-5. Run the application:
+5. Activate the virtual environment:
+   ```bash
+   poetry shell
+   ```
+6. Run the application:
    ```bash
    python src/main.py
    ```
@@ -44,6 +47,10 @@ zigral/
 - Follow PEP 8 style guide for Python code
 - Write tests for new features
 - Update documentation as needed
+- For deployment, generate requirements.txt:
+  ```bash
+  poetry export -f requirements.txt --output requirements.txt
+  ```
 
 ## License
 

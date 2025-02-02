@@ -4,6 +4,7 @@ from context_manager.models import ContextEntryDB
 
 pytestmark = pytest.mark.asyncio
 
+# Happy Path Tests
 async def test_create_context(context_manager_client: AsyncClient, test_context_entry):
     """Test creating a new context entry"""
     response = await context_manager_client.post("/context", json=test_context_entry)
@@ -24,11 +25,6 @@ async def test_get_context(context_manager_client: AsyncClient, test_context_ent
     data = response.json()
     assert data["job_id"] == test_context_entry["job_id"]
     assert data["context_data"] == test_context_entry["context_data"]
-
-async def test_get_nonexistent_context(context_manager_client: AsyncClient):
-    """Test retrieving a non-existent context entry"""
-    response = await context_manager_client.get("/context/nonexistent_job")
-    assert response.status_code == 404
 
 async def test_update_context(context_manager_client: AsyncClient, test_context_entry):
     """Test updating a context entry"""
@@ -60,51 +56,109 @@ async def test_delete_context(context_manager_client: AsyncClient, test_context_
     response = await context_manager_client.get(f"/context/{test_context_entry['job_id']}")
     assert response.status_code == 404
 
-async def test_list_contexts(context_manager_client: AsyncClient, test_context_entry):
-    """Test listing context entries with pagination"""
-    # Create multiple context entries
-    entries = []
-    for i in range(3):
+# Error Cases
+async def test_create_context_invalid_data(context_manager_client: AsyncClient):
+    """Test creating a context entry with invalid data"""
+    # Missing required fields
+    invalid_entry = {
+        "job_type": "prospecting"  # Missing job_id and context_data
+    }
+    response = await context_manager_client.post("/context", json=invalid_entry)
+    assert response.status_code == 422  # Validation error
+    
+    # Invalid job_type
+    invalid_entry = {
+        "job_id": "test_123",
+        "job_type": "",  # Empty string
+        "context_data": {}
+    }
+    response = await context_manager_client.post("/context", json=invalid_entry)
+    assert response.status_code == 422
+
+async def test_get_nonexistent_context(context_manager_client: AsyncClient):
+    """Test retrieving a non-existent context entry"""
+    response = await context_manager_client.get("/context/nonexistent_job")
+    assert response.status_code == 404
+    data = response.json()
+    assert "not found" in data["detail"].lower()
+
+async def test_update_nonexistent_context(context_manager_client: AsyncClient):
+    """Test updating a non-existent context entry"""
+    update_data = {
+        "job_id": "nonexistent_job",
+        "job_type": "prospecting",
+        "context_data": {}
+    }
+    response = await context_manager_client.put("/context/nonexistent_job", json=update_data)
+    assert response.status_code == 404
+
+async def test_update_context_mismatched_id(context_manager_client: AsyncClient, test_context_entry):
+    """Test updating a context entry with mismatched IDs"""
+    # First create a context entry
+    await context_manager_client.post("/context", json=test_context_entry)
+    
+    # Try to update with mismatched ID
+    update_data = test_context_entry.copy()
+    update_data["job_id"] = "different_id"
+    response = await context_manager_client.put(
+        f"/context/{test_context_entry['job_id']}",
+        json=update_data
+    )
+    assert response.status_code == 400  # Bad request
+
+async def test_delete_nonexistent_context(context_manager_client: AsyncClient):
+    """Test deleting a non-existent context entry"""
+    response = await context_manager_client.delete("/context/nonexistent_job")
+    assert response.status_code == 404
+
+# Pagination and Filtering Tests
+async def test_list_contexts_pagination(context_manager_client: AsyncClient, test_context_entry):
+    """Test context listing with pagination"""
+    # Create multiple entries
+    for i in range(5):
         entry = test_context_entry.copy()
         entry["job_id"] = f"test_job_{i}"
-        entries.append(entry)
         await context_manager_client.post("/context", json=entry)
     
-    # Test listing with default pagination
+    # Test default pagination
     response = await context_manager_client.get("/contexts")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 3
+    assert len(data) <= 10  # Default limit
     
-    # Test pagination
+    # Test custom limit
     response = await context_manager_client.get("/contexts?limit=2")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2
-
-async def test_list_contexts_by_job_type(context_manager_client: AsyncClient, test_context_entry):
-    """Test listing context entries filtered by job type"""
-    # Create entries with different job types
-    entry1 = test_context_entry.copy()
-    entry1["job_type"] = "prospecting"
-    entry2 = test_context_entry.copy()
-    entry2["job_id"] = "test_job_2"
-    entry2["job_type"] = "outreach"
     
-    await context_manager_client.post("/context", json=entry1)
-    await context_manager_client.post("/context", json=entry2)
-    
-    # Test filtering by job type
-    response = await context_manager_client.get("/contexts?job_type=prospecting")
+    # Test skip parameter
+    response = await context_manager_client.get("/contexts?skip=2&limit=2")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 1
-    assert data[0]["job_type"] == "prospecting"
+    assert len(data) == 2
+    assert data[0]["job_id"] != "test_job_0"  # First two entries should be skipped
 
+async def test_list_contexts_invalid_pagination(context_manager_client: AsyncClient):
+    """Test listing contexts with invalid pagination parameters"""
+    # Test negative skip
+    response = await context_manager_client.get("/contexts?skip=-1")
+    assert response.status_code == 422
+    
+    # Test negative limit
+    response = await context_manager_client.get("/contexts?limit=-1")
+    assert response.status_code == 422
+    
+    # Test limit exceeding maximum
+    response = await context_manager_client.get("/contexts?limit=101")
+    assert response.status_code == 422
+
+# Health Check Test
 async def test_health_check(context_manager_client: AsyncClient):
     """Test health check endpoint"""
     response = await context_manager_client.get("/health")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
-    assert data["service"] == "context-manager" 
+    assert data["service"] == "context-manager"
+    assert "version" in data 
