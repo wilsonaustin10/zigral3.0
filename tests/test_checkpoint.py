@@ -1,19 +1,20 @@
 import os
 import json
 import pytest
+import tempfile
+import shutil
 from pathlib import Path
 from orchestrator.checkpoint import CheckpointManager
+import time
 
 @pytest.fixture
-def checkpoint_manager():
-    """Create a checkpoint manager instance with a test directory"""
-    manager = CheckpointManager("test_checkpoints")
+def checkpoint_manager(tmp_path):
+    """Create a checkpoint manager instance with a temporary test directory"""
+    # Use pytest's tmp_path fixture for a unique temporary directory
+    checkpoint_dir = tmp_path / "test_checkpoints"
+    manager = CheckpointManager(str(checkpoint_dir))
     yield manager
-    # Cleanup after tests
-    if os.path.exists("test_checkpoints"):
-        for file in os.listdir("test_checkpoints"):
-            os.remove(os.path.join("test_checkpoints", file))
-        os.rmdir("test_checkpoints")
+    # Cleanup happens automatically as tmp_path is managed by pytest
 
 @pytest.fixture
 def test_state():
@@ -66,17 +67,27 @@ def test_load_specific_checkpoint(checkpoint_manager, test_state):
     """Test loading a specific checkpoint by timestamp"""
     job_id = "test_job_123"
     
-    # Create multiple checkpoints
+    # Create first checkpoint with initial state
     first_path = checkpoint_manager.create_checkpoint(job_id, test_state)
-    first_timestamp = os.path.basename(first_path).split('_', 1)[1].replace('.json', '')
+    time.sleep(1)  # Ensure unique timestamps
     
+    # Create second checkpoint with modified state
     modified_state = test_state.copy()
     modified_state["current_step"] = 3
-    checkpoint_manager.create_checkpoint(job_id, modified_state)
+    second_path = checkpoint_manager.create_checkpoint(job_id, modified_state)
     
-    # Load specific checkpoint
+    # Extract timestamp from first checkpoint path
+    first_timestamp = os.path.basename(first_path).split(f"{job_id}_")[1].replace('.json', '')
+    
+    # Load and verify first checkpoint
     loaded_data = checkpoint_manager.load_checkpoint(job_id, first_timestamp)
-    assert loaded_data["state"]["current_step"] == 2
+    assert loaded_data["state"]["current_step"] == test_state["current_step"], \
+        f"Expected step {test_state['current_step']}, got {loaded_data['state']['current_step']}"
+    
+    # Verify we can load latest (second) checkpoint
+    latest_data = checkpoint_manager.load_checkpoint(job_id)
+    assert latest_data["state"]["current_step"] == 3, \
+        "Latest checkpoint should have current_step = 3"
 
 def test_list_checkpoints(checkpoint_manager, test_state):
     """Test listing checkpoints"""
@@ -101,17 +112,21 @@ def test_multiple_checkpoints_same_job(checkpoint_manager, test_state):
     job_id = "test_job_123"
     
     # Create multiple checkpoints with different states
-    states = []
+    expected_steps = []
     for i in range(3):
         modified_state = test_state.copy()
         modified_state["current_step"] = i
-        states.append(modified_state)
+        expected_steps.append(i)
         checkpoint_manager.create_checkpoint(job_id, modified_state)
+        time.sleep(1)  # Ensure unique timestamps
     
-    # List checkpoints
+    # List and verify checkpoints
     checkpoints = checkpoint_manager.list_checkpoints(job_id)
-    assert len(checkpoints) == 3
+    assert len(checkpoints) == 3, f"Expected 3 checkpoints, got {len(checkpoints)}"
     
-    # Load latest checkpoint
-    latest_data = checkpoint_manager.load_checkpoint(job_id)
-    assert latest_data["state"]["current_step"] == 2 
+    # Load and verify each checkpoint in order
+    for idx, checkpoint in enumerate(sorted(checkpoints)):
+        timestamp = checkpoint.split(f"{job_id}_")[1].replace('.json', '')
+        loaded_data = checkpoint_manager.load_checkpoint(job_id, timestamp)
+        assert loaded_data["state"]["current_step"] == expected_steps[idx], \
+            f"Checkpoint {idx} should have step {expected_steps[idx]}" 
