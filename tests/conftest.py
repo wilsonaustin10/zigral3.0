@@ -4,24 +4,24 @@ import asyncio
 from typing import AsyncGenerator, Generator
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
-from tortoise.contrib.test import finalizer, initializer
+from tortoise import Tortoise
+from dotenv import load_dotenv
+
+# Load test environment variables
+load_dotenv(".env.test")
 
 # Import our applications
 from orchestrator.orchestrator import app as orchestrator_app
 from context_manager.main import app as context_manager_app
 from context_manager.config import get_settings
-
-# Override environment variables for testing
-os.environ["DATABASE_URL"] = "sqlite://:memory:"
-os.environ["OPENAI_API_KEY"] = "test_key"
-os.environ["DEBUG"] = "True"
+from context_manager import models
 
 # Get settings with test configuration
 settings = get_settings()
-TEST_DB_URL = "sqlite://:memory:"
+TEST_DB_URL = "postgres://user:password@localhost:5432/zigral_test"  # Use PostgreSQL for testing
 
 @pytest.fixture(scope="session")
-def event_loop() -> Generator:
+def event_loop():
     """Create an instance of the default event loop for each test case"""
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
@@ -30,13 +30,40 @@ def event_loop() -> Generator:
 @pytest.fixture(scope="session", autouse=True)
 async def initialize_tests():
     """Initialize test database"""
-    initializer(
-        modules={"models": ["context_manager.models"]},
-        db_url=TEST_DB_URL,
-        app_label="context_manager"
+    # Initialize DB
+    await Tortoise.init(
+        db_url=None,
+        config={
+            "connections": {
+                "default": {
+                    "engine": "tortoise.backends.asyncpg",
+                    "credentials": {
+                        "host": "localhost",
+                        "port": 5432,
+                        "user": "user",
+                        "password": "password",
+                        "database": "zigral_test",
+                    }
+                }
+            },
+            "apps": {
+                "context_manager": {
+                    "models": ["context_manager.models"],
+                    "default_connection": "default",
+                }
+            },
+            "use_tz": False,
+            "timezone": "UTC"
+        }
     )
+    
+    # Create schemas
+    await Tortoise.generate_schemas()
+    
     yield
-    await finalizer()
+    
+    # Clean up
+    await Tortoise.close_connections()
 
 @pytest.fixture
 def orchestrator_client() -> Generator:

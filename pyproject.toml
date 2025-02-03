@@ -4,7 +4,8 @@ version = "3.0.0"
 description = "Zigral - AI-powered sales prospecting and outreach automation platform"
 authors = ["Your Name <your.email@example.com>"]
 packages = [
-    { include = "src" }
+    { include = "orchestrator", from = "src" },
+    { include = "context_manager", from = "src" }
 ]
 
 [tool.poetry.dependencies]

@@ -53,19 +53,31 @@ async def update_context(job_id: str, context: ContextEntryCreate) -> Optional[C
         
     Returns:
         Optional[ContextEntryDB]: Updated context entry if found, None otherwise
+        
+    Raises:
+        ValueError: If the update operation fails
     """
     try:
+        # First check if the entry exists
         context_entry = await ContextEntryDB.filter(job_id=job_id).first()
         if not context_entry:
             logger.info(f"No context entry found for job {job_id}")
             return None
             
-        await context_entry.update_from_dict(context.model_dump()).save()
+        # Update the entry with new data
+        update_data = context.model_dump()
+        context_entry.job_id = update_data["job_id"]
+        context_entry.job_type = update_data["job_type"]
+        context_entry.context_data = update_data["context_data"]
+        await context_entry.save(update_fields=["job_id", "job_type", "context_data", "updated_at"])
         logger.info(f"Updated context entry for job {job_id}")
+        
+        # Refresh and return the updated entry
+        await context_entry.refresh_from_db()
         return context_entry
     except Exception as e:
         logger.error(f"Error updating context entry: {str(e)}")
-        raise
+        raise ValueError(f"Failed to update context entry: {str(e)}")
 
 async def delete_context(job_id: str) -> bool:
     """

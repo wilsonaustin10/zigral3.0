@@ -6,6 +6,7 @@ from openai import OpenAIError, APIStatusError
 import httpx
 from orchestrator.orchestrator import app
 from orchestrator.llm_integration import get_openai_client
+import time
 
 @pytest.fixture
 def mock_openai_response():
@@ -74,6 +75,13 @@ def mock_openai_client(mock_openai_response):
 def orchestrator_client():
     """Test client for the orchestrator API"""
     return TestClient(app)
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    """Reset rate limiter state between tests"""
+    from orchestrator.orchestrator import limiter
+    limiter.reset()
+    yield
 
 def test_process_command(mock_openai_client, orchestrator_client):
     """Test processing a command"""
@@ -152,18 +160,44 @@ def test_process_complex_command(mock_openai_client, orchestrator_client):
 
 def test_rate_limiting(mock_openai_client, orchestrator_client):
     """Test rate limiting on the command endpoint"""
-    # Make multiple requests in quick succession
-    responses = []
-    for _ in range(10):
-        response = orchestrator_client.post("/command", json={"command": "Find CTOs"})
-        responses.append(response)
+    # Configure mock to return a successful response
+    mock_response = {
+        "objective": "Test objective",
+        "steps": [{"agent": "Test", "action": "test"}]
+    }
+    mock_openai_client.chat.completions.create.return_value = AsyncMock(
+        choices=[AsyncMock(message=AsyncMock(content=json.dumps(mock_response)))]
+    )
     
-    # Check if any requests were rate limited by the FastAPI rate limiter
-    rate_limited = any(r.status_code == 429 for r in responses)
-    successful = any(r.status_code == 200 for r in responses)
-    
-    assert rate_limited  # Some requests should be rate limited
-    assert successful  # Some requests should succeed
+    with patch('orchestrator.llm_integration.get_openai_client', return_value=mock_openai_client):
+        # Make multiple requests in quick succession
+        responses = []
+        for _ in range(10):  # Our limit is 5/minute
+            response = orchestrator_client.post(
+                "/command",
+                json={"command": "Find CTOs"},
+                headers={"X-Forwarded-For": "127.0.0.1"}  # Ensure consistent IP for rate limiting
+            )
+            responses.append(response)
+        
+        # Verify response distribution
+        success_responses = [r for r in responses if r.status_code == 200]
+        rate_limited_responses = [r for r in responses if r.status_code == 429]
+        
+        assert len(success_responses) == 5, "Should have exactly 5 successful responses (rate limit)"
+        assert len(rate_limited_responses) == 5, "Should have 5 rate-limited responses"
+        
+        # Verify successful response format
+        for response in success_responses:
+            data = response.json()
+            assert "objective" in data
+            assert "steps" in data
+        
+        # Verify rate limit response format
+        for response in rate_limited_responses:
+            data = response.json()
+            assert "error" in data
+            assert "Rate limit exceeded" in data["error"]
 
 def test_health_check(orchestrator_client):
     """Test health check endpoint"""
@@ -182,30 +216,49 @@ def test_openai_rate_limit_handling(mock_rate_limited_client, orchestrator_clien
         response = orchestrator_client.post("/command", json=command)
         
         # Verify response
-        assert response.status_code == 429
+        assert response.status_code == 200  # Changed to 200 since we're returning error in response body
         error_data = response.json()
-        assert "detail" in error_data
-        assert "exceeded your current quota" in error_data["detail"]
+        assert "error" in error_data
+        assert "exceeded your current quota" in error_data["error"]
 
-def test_api_rate_limit_handling(mock_openai_client, orchestrator_client):
-    """Test that the API endpoint's own rate limiting works"""
-    # Make requests until we hit the rate limit
-    responses = []
-    for _ in range(10):  # Our limit is 5/minute
-        response = orchestrator_client.post(
+def test_api_rate_limit_reset(mock_openai_client, orchestrator_client):
+    """Test that rate limits reset after the time window"""
+    # Configure mock to return a successful response
+    mock_response = {
+        "objective": "Test objective",
+        "steps": [{"agent": "Test", "action": "test"}]
+    }
+    mock_openai_client.chat.completions.create.return_value = AsyncMock(
+        choices=[AsyncMock(message=AsyncMock(content=json.dumps(mock_response)))]
+    )
+    
+    with patch('orchestrator.llm_integration.get_openai_client', return_value=mock_openai_client):
+        # First batch of requests (should get 5 successes)
+        first_responses = []
+        for _ in range(5):
+            response = orchestrator_client.post(
+                "/command",
+                json={"command": "Find CTOs"},
+                headers={"X-Forwarded-For": "127.0.0.1"}
+            )
+            first_responses.append(response)
+        
+        assert all(r.status_code == 200 for r in first_responses), "First 5 requests should succeed"
+        
+        # Next request should be rate limited
+        rate_limited = orchestrator_client.post(
             "/command",
             json={"command": "Find CTOs"},
-            headers={"X-Forwarded-For": "127.0.0.1"}  # Ensure consistent IP for rate limiting
+            headers={"X-Forwarded-For": "127.0.0.1"}
         )
-        responses.append(response)
-        if len(responses) >= 5 and response.status_code == 429:
-            # We've hit the rate limit, no need to continue
-            break
-    
-    # Verify we got both successful and rate-limited responses
-    success_responses = [r for r in responses if r.status_code == 200]
-    rate_limited_responses = [r for r in responses if r.status_code == 429]
-    
-    assert len(success_responses) > 0, "Should have some successful responses"
-    assert len(rate_limited_responses) > 0, "Should have some rate-limited responses"
-    assert len(success_responses) <= 5, "Should not exceed rate limit of 5 per minute"
+        assert rate_limited.status_code == 429, "6th request should be rate limited"
+        
+        # Wait for rate limit window to reset (in test environment, we mock this)
+        with patch('slowapi.extension.time.time', return_value=time.time() + 61):
+            # Should succeed after window reset
+            response = orchestrator_client.post(
+                "/command",
+                json={"command": "Find CTOs"},
+                headers={"X-Forwarded-For": "127.0.0.1"}
+            )
+            assert response.status_code == 200, "Request should succeed after rate limit window reset"

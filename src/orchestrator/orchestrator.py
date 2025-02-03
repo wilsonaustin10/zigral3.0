@@ -31,7 +31,7 @@ Error Handling:
 """
 
 from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator, ConfigDict
 from typing import Dict, List, Optional, Union
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -58,13 +58,17 @@ class Command(BaseModel):
     command: str
     context: Optional[Dict] = None
 
-    @validator('command')
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator('command')
+    @classmethod
     def validate_command(cls, v):
         if not v or not v.strip():
             raise ValueError("Command cannot be empty")
         return v.strip()
 
-    @validator('context')
+    @field_validator('context')
+    @classmethod
     def validate_context(cls, v):
         if v is not None:
             if not isinstance(v, dict):
@@ -90,15 +94,21 @@ class ActionStep(BaseModel):
     target: Optional[str] = None
     criteria: Optional[Dict] = None
     fields: Optional[List[str]] = None
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class ActionSequence(BaseModel):
     """Model for the complete action sequence"""
     objective: str
     steps: List[ActionStep]
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class ErrorResponse(BaseModel):
     """Model for error responses"""
     error: str
+    
+    model_config = ConfigDict(from_attributes=True)
 
 @app.post("/command", response_model=Union[ActionSequence, ErrorResponse])
 @limiter.limit("5/minute")  # Allow 5 requests per minute per IP

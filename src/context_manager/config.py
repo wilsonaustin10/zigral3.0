@@ -1,4 +1,5 @@
 import os
+from typing import Dict, Any
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -8,21 +9,36 @@ class Settings(BaseSettings):
     # Service settings
     SERVICE_NAME: str = "context-manager"
     VERSION: str = "1.0.0"
-    DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
+    DEBUG: bool = False
+    APP_ENV: str = "development"
+    LOG_LEVEL: str = "INFO"
     
     # API settings
-    HOST: str = os.getenv("CONTEXT_MANAGER_HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("CONTEXT_MANAGER_PORT", "8001"))
+    API_HOST: str = "0.0.0.0"
+    API_PORT: int = 8000
+    CONTEXT_MANAGER_HOST: str = "0.0.0.0"
+    CONTEXT_MANAGER_PORT: int = 8001
     
     # Database settings
-    DB_URL: str = os.getenv(
-        "DATABASE_URL",
-        "postgres://user:password@localhost:5432/zigral"
-    )
+    DATABASE_URL: str = "postgres://user:password@localhost:5432/zigral"
+    
+    # OpenAI settings
+    OPENAI_API_KEY: str = "your_api_key_here"
     
     # Tortoise ORM settings
-    TORTOISE_ORM = {
-        "connections": {"default": DB_URL},
+    TORTOISE_ORM: Dict[str, Any] = {
+        "connections": {
+            "default": {
+                "engine": "tortoise.backends.asyncpg",
+                "credentials": {
+                    "host": "localhost",
+                    "port": 5432,
+                    "user": "user",
+                    "password": "password",
+                    "database": "zigral",
+                }
+            }
+        },
         "apps": {
             "context_manager": {
                 "models": ["context_manager.models"],
@@ -36,6 +52,20 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Update Tortoise ORM config with actual DATABASE_URL
+        self.TORTOISE_ORM["connections"]["default"] = {
+            "engine": "tortoise.backends.asyncpg",
+            "credentials": {
+                "host": "localhost",
+                "port": 5432,
+                "user": "user",
+                "password": "password",
+                "database": "zigral",
+            }
+        }
 
 @lru_cache()
 def get_settings() -> Settings:

@@ -154,6 +154,7 @@ async def update_context_entry(job_id: str, context_data: dict):
     
     Raises:
         HTTPException: 
+            - 400: If job ID in URL doesn't match job ID in payload
             - 404: If context entry not found
             - 422: If input validation fails
             - 500: If update operation fails
@@ -165,6 +166,13 @@ async def update_context_entry(job_id: str, context_data: dict):
             raise HTTPException(
                 status_code=404,
                 detail=f"Context entry not found for job {job_id}"
+            )
+
+        # Check for job ID mismatch
+        if "job_id" in context_data and context_data["job_id"] != job_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Job ID mismatch: URL has '{job_id}' but payload has '{context_data['job_id']}'"
             )
 
         # Create update data with new context data
