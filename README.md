@@ -407,58 +407,61 @@ The project uses GitHub Actions for continuous integration and deployment:
 
 ## Testing
 
-Run the test suite:
-```bash
-poetry run pytest
-```
+### Test Configuration
 
-For coverage report:
-```bash
-poetry run pytest --cov=src --cov-report=term-missing
-```
+The project uses pytest for testing with comprehensive coverage reporting. Key testing components include:
 
-### Checkpoint Testing
-The project includes comprehensive tests for the checkpoint system:
+1. **Test Structure**:
+   - Database tests (`tests/test_database.py`): Verify database connections and operations
+   - Context Manager tests (`tests/test_context_manager.py`): Test context CRUD operations
+   - Orchestrator tests (`tests/test_orchestrator.py`): Validate orchestration logic
+   - LLM Integration tests (`tests/test_llm_integration.py`): Test AI model interactions
+   - Logger tests (`tests/test_logger.py`): Verify logging functionality
+   - Checkpoint tests (`tests/test_checkpoint.py`): Test state persistence
 
-1. **Test Directory Management**:
-   ```python
-   @pytest.fixture
-   def checkpoint_manager(tmp_path):
-       """Create a checkpoint manager with temporary test directory"""
-       checkpoint_dir = tmp_path / "test_checkpoints"
-       manager = CheckpointManager(str(checkpoint_dir))
-       yield manager
-       # Cleanup happens automatically via pytest
+2. **Coverage Configuration**:
+   ```ini
+   [run]
+   source = src
+
+   [report]
+   exclude_lines =
+       pragma: no cover
+       def __repr__
+       if self.debug:
+       raise NotImplementedError
+       if __name__ == .__main__.:
+       pass
+       raise ImportError
+       except ImportError:
+       def main
+
+   omit =
+       src/main.py
+       tests/*
+       */__init__.py
    ```
 
-2. **State Persistence Tests**:
-   - Creating and loading checkpoints
-   - Multiple checkpoints for the same job
-   - Timestamp-specific checkpoint loading
-   - Non-existent checkpoint handling
+3. **Coverage Standards**:
+   - Entry points (e.g., `main.py`) are excluded from coverage
+   - Focus on testing business logic and application behavior
+   - Current coverage: >80% across core modules
 
-3. **Best Practices**:
-   - Using `tmp_path` for isolated test directories
-   - Ensuring unique timestamps for sequential checkpoints
-   - Verifying checkpoint content and metadata
-   - Testing both success and error cases
+4. **Test Database**:
+   - Uses a dedicated test database (`zigral_test`)
+   - Separate configuration from production database
+   - Automatic schema creation and cleanup
 
-4. **Example Test Cases**:
-   ```python
-   def test_multiple_checkpoints_same_job(checkpoint_manager, test_state):
-       """Test multiple checkpoints for the same job"""
-       job_id = "test_job_123"
-       
-       # Create checkpoints with different states
-       for i in range(3):
-           modified_state = test_state.copy()
-           modified_state["current_step"] = i
-           checkpoint_manager.create_checkpoint(job_id, modified_state)
-           time.sleep(1)  # Ensure unique timestamps
-       
-       # Verify checkpoints
-       checkpoints = checkpoint_manager.list_checkpoints(job_id)
-       assert len(checkpoints) == 3
+5. **Running Tests**:
+   ```bash
+   # Run all tests with coverage report
+   pytest -v --cov=src --cov-report=term-missing
+
+   # Run specific test file
+   pytest tests/test_database.py -v
+
+   # Run tests matching a pattern
+   pytest -v -k "database"
    ```
 
 ## License
