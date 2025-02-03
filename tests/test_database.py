@@ -1,0 +1,178 @@
+import pytest
+from tortoise import Tortoise
+from tortoise.exceptions import DBConnectionError, ConfigurationError
+from context_manager.database import close_db
+
+# Test database configuration
+TEST_TORTOISE_CONFIG = {
+    "connections": {
+        "default": {
+            "engine": "tortoise.backends.asyncpg",
+            "credentials": {
+                "host": "localhost",
+                "port": 5432,
+                "user": "user",
+                "password": "password",
+                "database": "zigral_test",
+            }
+        }
+    },
+    "apps": {
+        "context_manager": {
+            "models": ["context_manager.models"],
+            "default_connection": "default",
+        }
+    },
+    "use_tz": False,
+    "timezone": "UTC"
+}
+
+async def init_test_db():
+    """Initialize the test database with Tortoise ORM.
+    
+    This function:
+    1. Initializes Tortoise ORM with the test configuration
+    2. Creates database schemas for all models
+    
+    Raises:
+        Exception: If database initialization fails
+    """
+    try:
+        await Tortoise.init(config=TEST_TORTOISE_CONFIG)
+        await Tortoise.generate_schemas()
+    except Exception as e:
+        raise
+
+@pytest.mark.asyncio
+async def test_database_initialization():
+    """Test database initialization process.
+    
+    This test verifies that:
+    1. Database connection can be established
+    2. A basic query can be executed
+    3. Connection can be closed properly
+    """
+    # Close any existing connections
+    await Tortoise.close_connections()
+    
+    # Initialize database
+    await init_test_db()
+    
+    # Verify connection is established by getting the connection and running a query
+    conn = Tortoise.get_connection("default")
+    assert conn is not None
+    assert await conn.execute_query("SELECT 1")
+    
+    # Clean up
+    await close_db()
+
+@pytest.mark.asyncio
+async def test_database_close():
+    """Test database connection closing.
+    
+    This test verifies that:
+    1. A connection can be established and used
+    2. The connection can be closed properly
+    3. After closing, the connection pool is properly cleaned up
+    """
+    # First initialize
+    await init_test_db()
+    
+    # Get connection before closing
+    conn = Tortoise.get_connection("default")
+    assert await conn.execute_query("SELECT 1")  # Verify it works
+    
+    # Then close
+    await close_db()
+    
+    # Verify connection is closed by checking internal state
+    assert not hasattr(conn, '_pool') or conn._pool is None
+    
+    # Clean up any remaining connections
+    await Tortoise.close_connections()
+
+@pytest.mark.asyncio
+async def test_database_initialization_error():
+    """Test database initialization with invalid configuration.
+    
+    This test verifies that:
+    1. Attempting to connect to a nonexistent database raises DBConnectionError
+    2. The error is properly propagated
+    """
+    # Close any existing connections
+    await Tortoise.close_connections()
+    
+    # Create invalid config with nonexistent database
+    invalid_config = {
+        "connections": {
+            "default": {
+                "engine": "tortoise.backends.asyncpg",
+                "credentials": {
+                    "host": "localhost",
+                    "port": 5432,
+                    "user": "user",
+                    "password": "password",
+                    "database": "nonexistent_db",
+                }
+            }
+        },
+        "apps": {
+            "context_manager": {
+                "models": ["context_manager.models"],
+                "default_connection": "default",
+            }
+        }
+    }
+    
+    # Initialize with invalid config and force connection attempt
+    with pytest.raises(DBConnectionError):
+        await Tortoise.init(config=invalid_config)
+        await Tortoise.generate_schemas()
+
+@pytest.mark.asyncio
+async def test_database_close_error():
+    """Test closing an already closed database connection.
+    
+    This test verifies that:
+    1. A connection can be closed normally
+    2. Attempting to close an already closed connection succeeds silently
+    """
+    # Initialize database
+    await init_test_db()
+    
+    # Close connection
+    await close_db()
+    
+    # Attempt to close again - this should succeed silently
+    await close_db()
+    assert True  # If we got here, the test passed
+
+@pytest.mark.asyncio
+async def test_database_schema_creation():
+    """Test database schema creation.
+    
+    This test verifies that:
+    1. Database schemas can be created successfully
+    2. The required tables are present in the database
+    3. Specifically checks for the 'context_entries' table
+    """
+    # Close any existing connections
+    await Tortoise.close_connections()
+    
+    # Initialize database
+    await init_test_db()
+    
+    # Verify tables are created
+    conn = Tortoise.get_connection("default")
+    result = await conn.execute_query("""
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public'
+    """)
+    
+    # Check if our tables exist
+    tables = [row[0] for row in result[1]]
+    assert "context_entries" in tables
+    
+    # Clean up
+    await close_db() 
