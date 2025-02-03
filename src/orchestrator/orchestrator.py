@@ -1,11 +1,19 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import Dict, List, Optional
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from .llm_integration import generate_action_sequence
 from .logger import get_logger
 
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 # Initialize FastAPI app
 app = FastAPI(title="Zigral Orchestrator", version="3.0.0")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 logger = get_logger(__name__)
 
 class Command(BaseModel):
@@ -27,7 +35,8 @@ class ActionSequence(BaseModel):
     steps: List[ActionStep]
 
 @app.post("/command", response_model=ActionSequence)
-async def process_command(command: Command):
+@limiter.limit("5/minute")  # Allow 5 requests per minute per IP
+async def process_command(request: Request, command: Command):
     """
     Process a user command and generate an action sequence
     """
@@ -55,4 +64,4 @@ async def health_check():
     """
     Health check endpoint
     """
-    return {"status": "healthy", "service": "orchestrator"} 
+    return {"status": "healthy", "service": "orchestrator", "version": "3.0.0"} 
