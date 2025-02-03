@@ -1,5 +1,7 @@
 name: CI/CD
 
+# Workflow for continuous integration and deployment
+# Triggered on pushes to main and pull requests
 on:
   push:
     branches: [ main ]
@@ -7,9 +9,11 @@ on:
     branches: [ main ]
 
 jobs:
+  # Job to validate environment setup and run tests
   test:
     runs-on: ubuntu-latest
     
+    # Set up PostgreSQL service container
     services:
       postgres:
         image: postgres:15-alpine
@@ -42,6 +46,16 @@ jobs:
     - name: Install dependencies
       run: poetry install
 
+    # New step: Validate environment
+    - name: Validate environment
+      env:
+        DATABASE_URL: postgresql://zigral:zigral_password@localhost:5432/zigral
+        OPENAI_API_KEY: test_key
+        DEBUG: "True"
+      run: |
+        echo "Validating environment setup..."
+        poetry run python scripts/validate_env.py
+
     - name: Run tests
       env:
         DATABASE_URL: postgresql://zigral:zigral_password@localhost:5432/zigral
@@ -56,6 +70,7 @@ jobs:
         file: ./coverage.xml
         fail_ci_if_error: true
 
+  # Job to run code quality checks
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -80,6 +95,7 @@ jobs:
         poetry run isort . --check
         poetry run flake8 .
 
+  # Job to build and push Docker images
   build-and-push:
     needs: [test, lint]
     runs-on: ubuntu-latest
@@ -98,6 +114,7 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    # Build and push Orchestrator image
     - name: Build and push Orchestrator
       uses: docker/build-push-action@v4
       with:
@@ -109,6 +126,7 @@ jobs:
         build-args: |
           SERVICE_NAME=orchestrator
 
+    # Build and push Context Manager image
     - name: Build and push Context Manager
       uses: docker/build-push-action@v4
       with:
