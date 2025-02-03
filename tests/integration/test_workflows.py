@@ -13,12 +13,25 @@ Test Setup:
 Key Components Tested:
 1. Context Management:
    - Context creation and updates
-   - State transitions
-   - Error handling and recovery
+   - State transitions (initialized -> research_completed -> completed)
+   - Error handling (error -> retrying -> completed)
+   - Complete context data replacement during updates
 2. Workflow Orchestration:
-   - Action sequence generation
-   - Step execution
-   - Error recovery
+   - Action sequence generation from LLM
+   - Step execution and state tracking
+   - Error recovery with proper state management
+
+State Transitions:
+1. Normal Flow:
+   - initialized: Initial state when context is created
+   - research_completed: After research step is done
+   - completed: Final state after all steps are done
+
+2. Error Recovery Flow:
+   - initialized: Initial state
+   - error: When an error occurs (includes error details)
+   - retrying: During recovery attempt
+   - completed: After successful recovery
 """
 
 import pytest
@@ -83,8 +96,15 @@ def event_loop():
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
     yield loop
-    loop.close()
+    
+    # Clean up the loop
+    if not loop.is_closed():
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
+    asyncio.set_event_loop(None)
 
 @asynccontextmanager
 async def app_lifespan(app):
@@ -104,22 +124,28 @@ async def app_lifespan(app):
     finally:
         await close_db()
 
-@asynccontextmanager
+@pytest.mark.asyncio
 async def test_database():
-    """Context manager for test database setup.
+    """Test database initialization and cleanup.
     
-    Provides a clean database environment for each test by:
-    1. Initializing a fresh database connection
-    2. Creating necessary schemas
-    3. Yielding control during test execution
-    4. Cleaning up after test completion
+    Verifies that:
+    1. Database connection can be established
+    2. Schemas can be created
+    3. Connection can be closed properly
     """
-    try:
-        await init_db()
-        await Tortoise.generate_schemas()
-        yield
-    finally:
-        await close_db()
+    await init_db()
+    await Tortoise.generate_schemas()
+    
+    # Verify database is initialized
+    connection = Tortoise.get_connection("default")
+    assert connection is not None
+    assert connection.capabilities.dialect == "postgres"
+    
+    # Verify models are registered
+    assert "context_manager" in Tortoise.apps
+    assert len(Tortoise.apps["context_manager"].keys()) > 0
+    
+    await close_db()
 
 @pytest.fixture(autouse=True)
 async def setup_database():
@@ -130,8 +156,12 @@ async def setup_database():
     2. Database connections are properly managed
     3. Resources are cleaned up after each test
     """
-    async with test_database():
+    await init_db()
+    await Tortoise.generate_schemas()
+    try:
         yield
+    finally:
+        await close_db()
 
 @pytest.fixture
 async def context_client():
@@ -207,12 +237,15 @@ async def test_prospecting_workflow(
 ):
     """Test complete prospecting workflow from start to finish.
     
-    This test simulates:
-    1. Creating a new prospecting job
+    This test verifies the normal workflow execution path with proper state transitions:
+    1. Creating a new prospecting job (status: initialized)
     2. Getting action sequence from LLM
-    3. Executing multiple steps
-    4. Updating context after each step
-    5. Completing the workflow
+    3. Executing research step (status: research_completed)
+    4. Executing outreach step (status: completed)
+    5. Verifying final state and results
+    
+    The test ensures that context updates completely replace the context data,
+    maintaining a clean state at each step of the workflow.
     """
     # Mock OpenAI client
     with patch('orchestrator.llm_integration.get_openai_client', return_value=mock_openai_client):
@@ -249,16 +282,24 @@ async def test_prospecting_workflow(
                 {"name": "InnovateTech", "industry": "tech", "location": "US"}
             ]
         }
-        context_data["context_data"]["research_results"] = research_result
-        context_data["context_data"]["status"] = "research_completed"
+        update_data = {
+            "job_id": "test_prospect_001",
+            "job_type": "prospecting",
+            "context_data": {
+                "target_industry": "tech",
+                "target_location": "US",
+                "status": "research_completed",
+                "research_results": research_result
+            }
+        }
         response = await context_client.put(
-            f"/context/{context_data['job_id']}", 
-            json=context_data
+            f"/context/{update_data['job_id']}",
+            json=update_data
         )
         assert response.status_code == 200
 
         # 4. Verify context was updated
-        response = await context_client.get(f"/context/{context_data['job_id']}")
+        response = await context_client.get(f"/context/{update_data['job_id']}")
         assert response.status_code == 200
         updated_context = response.json()
         assert updated_context["context_data"]["status"] == "research_completed"
@@ -270,16 +311,16 @@ async def test_prospecting_workflow(
             "message_template": "introduction",
             "target_companies": ["TechCorp", "InnovateTech"]
         }
-        context_data["context_data"]["outreach_results"] = outreach_result
-        context_data["context_data"]["status"] = "completed"
+        update_data["context_data"]["outreach_results"] = outreach_result
+        update_data["context_data"]["status"] = "completed"
         response = await context_client.put(
-            f"/context/{context_data['job_id']}", 
-            json=context_data
+            f"/context/{update_data['job_id']}",
+            json=update_data
         )
         assert response.status_code == 200
 
         # 6. Verify final state
-        response = await context_client.get(f"/context/{context_data['job_id']}")
+        response = await context_client.get(f"/context/{update_data['job_id']}")
         assert response.status_code == 200
         final_context = response.json()
         assert final_context["context_data"]["status"] == "completed"
@@ -294,12 +335,14 @@ async def test_error_recovery_workflow(
 ):
     """Test workflow error recovery and checkpoint restoration.
     
-    This test simulates:
-    1. Starting a workflow
-    2. Encountering an error mid-workflow
-    3. Creating a checkpoint
-    4. Recovering from the error
-    5. Completing the workflow
+    This test verifies the error recovery path with proper state transitions:
+    1. Starting a workflow (status: initialized)
+    2. Encountering an error (status: error, with error details)
+    3. Attempting recovery (status: retrying, error details removed)
+    4. Completing the workflow (status: completed, with results)
+    
+    The test ensures that error states are properly managed and that the context
+    can be cleaned up during recovery by completely replacing the context data.
     """
     # Mock OpenAI client
     with patch('orchestrator.llm_integration.get_openai_client', return_value=mock_openai_client):
@@ -322,43 +365,51 @@ async def test_error_recovery_workflow(
             "step": "research",
             "timestamp": datetime.now(UTC).isoformat()
         }
-        context_data["context_data"]["last_error"] = error_data
-        context_data["context_data"]["status"] = "error"
+        update_data = {
+            "job_id": "test_recovery_001",
+            "job_type": "prospecting",
+            "context_data": {
+                "target_industry": "tech",
+                "target_location": "US",
+                "status": "error",
+                "last_error": error_data
+            }
+        }
         response = await context_client.put(
-            f"/context/{context_data['job_id']}", 
-            json=context_data
+            f"/context/{update_data['job_id']}",
+            json=update_data
         )
         assert response.status_code == 200
 
         # 3. Verify error state
-        response = await context_client.get(f"/context/{context_data['job_id']}")
+        response = await context_client.get(f"/context/{update_data['job_id']}")
         assert response.status_code == 200
         error_context = response.json()
         assert error_context["context_data"]["status"] == "error"
         assert "last_error" in error_context["context_data"]
 
         # 4. Simulate recovery
-        context_data["context_data"]["status"] = "retrying"
-        context_data["context_data"].pop("last_error")
+        update_data["context_data"]["status"] = "retrying"
+        update_data["context_data"].pop("last_error")
         response = await context_client.put(
-            f"/context/{context_data['job_id']}", 
-            json=context_data
+            f"/context/{update_data['job_id']}",
+            json=update_data
         )
         assert response.status_code == 200
 
         # 5. Complete workflow after recovery
-        context_data["context_data"]["status"] = "completed"
-        context_data["context_data"]["research_results"] = {
+        update_data["context_data"]["status"] = "completed"
+        update_data["context_data"]["research_results"] = {
             "companies": [{"name": "TechCorp", "industry": "tech"}]
         }
         response = await context_client.put(
-            f"/context/{context_data['job_id']}", 
-            json=context_data
+            f"/context/{update_data['job_id']}",
+            json=update_data
         )
         assert response.status_code == 200
 
         # 6. Verify successful recovery
-        response = await context_client.get(f"/context/{context_data['job_id']}")
+        response = await context_client.get(f"/context/{update_data['job_id']}")
         assert response.status_code == 200
         final_context = response.json()
         assert final_context["context_data"]["status"] == "completed"

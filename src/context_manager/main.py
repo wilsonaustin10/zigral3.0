@@ -16,9 +16,11 @@ API Endpoints:
    - Returns 200 with context data on success
 
 3. PUT /context/{job_id}
-   - Update existing context entry
-   - Validates input and checks job ID match
-   - Returns 404 if not found, 400 on ID mismatch
+   - Update existing context entry by completely replacing context data
+   - Preserves job_id and job_type while updating context_data
+   - Validates input data structure and content
+   - Returns 404 if not found, 422 on validation error
+   - Example: Updating workflow status from "initialized" to "completed"
 
 4. DELETE /context/{job_id}
    - Delete context entry by job ID
@@ -40,13 +42,25 @@ Validation:
 1. Existence Validation: Checks if resources exist before operations
 2. Data Validation: Ensures input data meets schema requirements
 3. Business Logic Validation: Verifies business rules (e.g., job ID matching)
+4. Context Data Validation: Verifies context_data is a valid dictionary
 
-Example Error Responses:
+Example Request/Response:
+PUT /context/job123
+Request:
 {
-    "detail": "Context entry not found for job example_job"
+    "context_data": {
+        "status": "completed",
+        "results": {"key": "value"}
+    }
 }
+Response:
 {
-    "detail": "Job ID mismatch: URL has 'job1' but payload has 'job2'"
+    "job_id": "job123",
+    "job_type": "analysis",
+    "context_data": {
+        "status": "completed",
+        "results": {"key": "value"}
+    }
 }
 
 Lifecycle Management:
@@ -123,7 +137,27 @@ async def get_context_entry(job_id: str):
 
 @app.put("/context/{job_id}", response_model=ContextEntryResponse)
 async def update_context_entry(job_id: str, context_data: dict):
-    """Update a context entry"""
+    """Update a context entry by replacing its context data.
+    
+    This endpoint completely replaces the context_data of an existing entry while
+    preserving its job_id and job_type. This allows for atomic updates of the
+    entire context state, which is crucial for maintaining consistency in workflow
+    state transitions.
+    
+    Args:
+        job_id (str): The ID of the job to update
+        context_data (dict): The new context data containing the complete updated state
+            Example: {"context_data": {"status": "completed", "results": {...}}}
+    
+    Returns:
+        ContextEntryResponse: The updated context entry
+    
+    Raises:
+        HTTPException: 
+            - 404: If context entry not found
+            - 422: If input validation fails
+            - 500: If update operation fails
+    """
     try:
         # First check if the context entry exists
         existing_context = await get_context(job_id)
@@ -133,20 +167,20 @@ async def update_context_entry(job_id: str, context_data: dict):
                 detail=f"Context entry not found for job {job_id}"
             )
 
+        # Create update data with new context data
+        update_data = {
+            "job_id": job_id,
+            "job_type": existing_context.job_type,
+            "context_data": context_data["context_data"]  # Replace entire context data
+        }
+
         # Validate the update data
         try:
-            context = ContextEntryCreate(**context_data)
+            context = ContextEntryCreate(**update_data)
         except ValueError as e:
             raise HTTPException(
                 status_code=422,
                 detail=str(e)
-            )
-
-        # Check for job ID mismatch
-        if job_id != context.job_id:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Job ID mismatch: URL has '{job_id}' but payload has '{context.job_id}'"
             )
 
         # Update the context entry
