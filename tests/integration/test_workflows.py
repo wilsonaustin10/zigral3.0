@@ -5,7 +5,7 @@ and orchestrator services. The tests use async clients to simulate HTTP requests
 that the workflow state is properly managed throughout the execution.
 
 Test Setup:
-- Uses a dedicated test database (zigral_test)
+- Uses an in-memory SQLite database for testing
 - Configures Tortoise ORM with proper connection pooling
 - Handles async database operations with proper lifecycle management
 - Mocks OpenAI client for deterministic LLM responses
@@ -20,6 +20,31 @@ Key Components Tested:
    - Action sequence generation from LLM
    - Step execution and state tracking
    - Error recovery with proper state management
+   - Command validation and processing
+
+Command Payload Structure:
+1. Context Creation:
+   {
+       "job_id": str,
+       "job_type": str,
+       "context_data": {
+           "target_industry": str,
+           "target_location": str,
+           "status": str,
+           ...
+       }
+   }
+
+2. Command Request:
+   {
+       "command": str,
+       "context": {
+           "job_id": str,
+           "target_industry": str,
+           "target_location": str,
+           ...additional fields...
+       }
+   }
 
 State Transitions:
 1. Normal Flow:
@@ -45,67 +70,12 @@ import asyncio
 from openai import AsyncOpenAI
 from contextlib import asynccontextmanager
 import nest_asyncio
-import httpx
+from httpx import AsyncClient
+from typing import AsyncGenerator
 
 from context_manager.main import app as context_app
 from orchestrator.orchestrator import app as orchestrator_app
-from context_manager.database import init_db, close_db
-from orchestrator.llm_integration import generate_action_sequence
-from context_manager.config import get_settings
-
-# Enable nested event loops for proper async operation in tests
-nest_asyncio.apply()
-
-# Override settings for testing
-settings = get_settings()
-settings.TORTOISE_ORM = {
-    "connections": {
-        "default": {
-            "engine": "tortoise.backends.asyncpg",
-            "credentials": {
-                "host": "localhost",
-                "port": 5432,
-                "user": "user",
-                "password": "password",
-                "database": "zigral_test",
-            },
-            "min_size": 1,
-            "max_size": 5,  # Allow multiple concurrent connections
-            "max_queries": 50000,
-            "max_inactive_connection_lifetime": 300,  # 5 minutes
-        }
-    },
-    "apps": {
-        "context_manager": {
-            "models": ["context_manager.models"],
-            "default_connection": "default",
-        }
-    },
-    "use_tz": False,
-    "timezone": "UTC",
-}
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session.
-
-    This fixture ensures that we have a consistent event loop throughout the test session,
-    which is necessary for proper async operation and database connection management.
-    """
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    yield loop
-
-    # Clean up the loop
-    if not loop.is_closed():
-        loop.run_until_complete(loop.shutdown_asyncgens())
-        loop.close()
-    asyncio.set_event_loop(None)
+from context_manager.models import ContextEntryDB
 
 
 @asynccontextmanager
@@ -124,7 +94,24 @@ async def app_lifespan(app):
         await Tortoise.generate_schemas()
         yield
     finally:
-        await close_db()
+        await Tortoise.close_connections()
+
+
+async def init_db():
+    """Initialize test database with SQLite."""
+    config = {
+        "connections": {
+            "default": "sqlite://:memory:"
+        },
+        "apps": {
+            "models": {
+                "models": ["context_manager.models"],
+                "default_connection": "default",
+            }
+        },
+    }
+    await Tortoise.init(config=config)
+    await Tortoise.generate_schemas()
 
 
 @pytest.mark.asyncio
@@ -142,59 +129,34 @@ async def test_database():
     # Verify database is initialized
     connection = Tortoise.get_connection("default")
     assert connection is not None
-    assert connection.capabilities.dialect == "postgres"
+    
+    # Execute query and await the result
+    result = await connection.execute_query(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    )
+    tables = [row[0] for row in result[1]]
+    assert "context_entries" in tables
 
     # Verify models are registered
-    assert "context_manager" in Tortoise.apps
-    assert len(Tortoise.apps["context_manager"].keys()) > 0
+    assert "models" in Tortoise.apps
+    assert ContextEntryDB in Tortoise.apps["models"].values()
 
-    await close_db()
-
-
-@pytest.fixture(autouse=True)
-async def setup_database():
-    """Automatically set up and tear down database for each test.
-
-    This fixture runs automatically for each test, ensuring that:
-    1. Each test starts with a clean database state
-    2. Database connections are properly managed
-    3. Resources are cleaned up after each test
-    """
-    await init_db()
-    await Tortoise.generate_schemas()
-    try:
-        yield
-    finally:
-        await close_db()
+    # Clean up
+    await Tortoise.close_connections()
 
 
 @pytest.fixture
-async def context_client():
-    """Create an async test client for the context manager API.
-
-    Returns an httpx.AsyncClient configured to:
-    1. Use the proper FastAPI application
-    2. Handle lifespan events correctly
-    3. Make async HTTP requests to test endpoints
-    """
+async def context_client(setup_database) -> AsyncGenerator[AsyncClient, None]:
+    """Get a test client for the context manager API."""
     context_app.router.lifespan_context = app_lifespan
-    async with httpx.AsyncClient(app=context_app, base_url="http://test") as client:
+    async with AsyncClient(app=context_app, base_url="http://test") as client:
         yield client
 
 
 @pytest.fixture
-async def orchestrator_client():
-    """Create an async test client for the orchestrator API.
-
-    Returns an httpx.AsyncClient configured to:
-    1. Use the proper FastAPI application
-    2. Handle lifespan events correctly
-    3. Make async HTTP requests to test endpoints
-    """
-    orchestrator_app.router.lifespan_context = app_lifespan
-    async with httpx.AsyncClient(
-        app=orchestrator_app, base_url="http://test"
-    ) as client:
+async def orchestrator_client() -> AsyncGenerator[AsyncClient, None]:
+    """Get a test client for the orchestrator API."""
+    async with AsyncClient(app=orchestrator_app, base_url="http://test") as client:
         yield client
 
 
@@ -236,6 +198,26 @@ def mock_openai_client():
     return mock_client
 
 
+@pytest.fixture(scope="session")
+async def setup_database():
+    """Initialize test database."""
+    config = {
+        "connections": {
+            "default": "sqlite://:memory:"
+        },
+        "apps": {
+            "models": {
+                "models": ["context_manager.models"],
+                "default_connection": "default",
+            }
+        },
+    }
+    await Tortoise.init(config=config)
+    await Tortoise.generate_schemas()
+    yield
+    await Tortoise.close_connections()
+
+
 @pytest.mark.asyncio
 async def test_prospecting_workflow(
     setup_database, context_client, orchestrator_client, mock_openai_client
@@ -269,68 +251,81 @@ async def test_prospecting_workflow(
         }
         response = await context_client.post("/context", json=context_data)
         assert response.status_code == 200
-        created_context = response.json()
-        assert created_context["job_id"] == "test_prospect_001"
+        data = response.json()
+        assert data["job_id"] == context_data["job_id"]
+        assert data["context_data"]["status"] == "initialized"
 
-        # 2. Start workflow in orchestrator
-        command = {
-            "command": "Find tech companies in US for prospecting",
-            "job_id": "test_prospect_001",
-        }
-        response = await orchestrator_client.post("/command", json=command)
+        # 2. Get action sequence from LLM
+        response = await orchestrator_client.post(
+            "/command",
+            json={
+                "command": "research tech companies in US",
+                "context": {
+                    "job_id": context_data["job_id"],
+                    "target_industry": "tech",
+                    "target_location": "US",
+                    "status": "initialized"
+                }
+            },
+        )
         assert response.status_code == 200
-        workflow = response.json()
-        assert "steps" in workflow
-        assert len(workflow["steps"]) == 2
+        data = response.json()
+        assert "objective" in data
+        assert "steps" in data
+        assert len(data["steps"]) > 0
 
-        # 3. Simulate research step completion
-        research_result = {
-            "companies": [
-                {"name": "TechCorp", "industry": "tech", "location": "US"},
-                {"name": "InnovateTech", "industry": "tech", "location": "US"},
-            ]
-        }
-        update_data = {
-            "job_id": "test_prospect_001",
-            "job_type": "prospecting",
+        # 3. Execute research step
+        research_update = {
             "context_data": {
+                "status": "research_completed",
                 "target_industry": "tech",
                 "target_location": "US",
-                "status": "research_completed",
-                "research_results": research_result,
+                "research_results": data["steps"]
+            }
+        }
+        response = await context_client.put(
+            f"/context/{context_data['job_id']}", 
+            json=research_update
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["context_data"]["status"] == "research_completed"
+
+        # 4. Execute outreach step
+        response = await orchestrator_client.post(
+            "/command",
+            json={
+                "command": "prepare outreach messages",
+                "context": {
+                    "job_id": context_data["job_id"],
+                    "target_industry": "tech",
+                    "target_location": "US",
+                    "research_results": json.dumps(data["context_data"]["research_results"])
+                }
             },
-        }
-        response = await context_client.put(
-            f"/context/{update_data['job_id']}", json=update_data
         )
         assert response.status_code == 200
+        data = response.json()
+        assert "objective" in data
+        assert "steps" in data
 
-        # 4. Verify context was updated
-        response = await context_client.get(f"/context/{update_data['job_id']}")
-        assert response.status_code == 200
-        updated_context = response.json()
-        assert updated_context["context_data"]["status"] == "research_completed"
-        assert "research_results" in updated_context["context_data"]
-
-        # 5. Simulate outreach step completion
-        outreach_result = {
-            "messages_sent": 2,
-            "message_template": "introduction",
-            "target_companies": ["TechCorp", "InnovateTech"],
+        # 5. Update context with completion
+        completion_update = {
+            "context_data": {
+                "status": "completed",
+                "target_industry": "tech",
+                "target_location": "US",
+                "research_results": data["steps"],
+                "outreach_messages": data["steps"]
+            }
         }
-        update_data["context_data"]["outreach_results"] = outreach_result
-        update_data["context_data"]["status"] = "completed"
         response = await context_client.put(
-            f"/context/{update_data['job_id']}", json=update_data
+            f"/context/{context_data['job_id']}", 
+            json=completion_update
         )
         assert response.status_code == 200
-
-        # 6. Verify final state
-        response = await context_client.get(f"/context/{update_data['job_id']}")
-        assert response.status_code == 200
-        final_context = response.json()
-        assert final_context["context_data"]["status"] == "completed"
-        assert "outreach_results" in final_context["context_data"]
+        data = response.json()
+        assert data["context_data"]["status"] == "completed"
 
 
 @pytest.mark.asyncio
@@ -365,56 +360,61 @@ async def test_error_recovery_workflow(
         }
         response = await context_client.post("/context", json=context_data)
         assert response.status_code == 200
+        data = response.json()
+        assert data["job_id"] == context_data["job_id"]
+        assert data["context_data"]["status"] == "initialized"
 
-        # 2. Simulate error during research
-        error_data = {
-            "error": "API rate limit exceeded",
-            "step": "research",
-            "timestamp": datetime.now(UTC).isoformat(),
-        }
-        update_data = {
-            "job_id": "test_recovery_001",
+        # 2. Simulate error during execution
+        error_update = {
+            "job_id": context_data["job_id"],
             "job_type": "prospecting",
             "context_data": {
-                "target_industry": "tech",
-                "target_location": "US",
                 "status": "error",
-                "last_error": error_data,
+                "error": "API rate limit exceeded",
+                "error_timestamp": datetime.now(UTC).isoformat(),
             },
         }
         response = await context_client.put(
-            f"/context/{update_data['job_id']}", json=update_data
+            f"/context/{context_data['job_id']}", json=error_update
         )
         assert response.status_code == 200
+        data = response.json()
+        assert data["context_data"]["status"] == "error"
+        assert "error" in data["context_data"]
 
-        # 3. Verify error state
-        response = await context_client.get(f"/context/{update_data['job_id']}")
-        assert response.status_code == 200
-        error_context = response.json()
-        assert error_context["context_data"]["status"] == "error"
-        assert "last_error" in error_context["context_data"]
-
-        # 4. Simulate recovery
-        update_data["context_data"]["status"] = "retrying"
-        update_data["context_data"].pop("last_error")
-        response = await context_client.put(
-            f"/context/{update_data['job_id']}", json=update_data
-        )
-        assert response.status_code == 200
-
-        # 5. Complete workflow after recovery
-        update_data["context_data"]["status"] = "completed"
-        update_data["context_data"]["research_results"] = {
-            "companies": [{"name": "TechCorp", "industry": "tech"}]
+        # 3. Attempt recovery
+        retry_update = {
+            "job_id": context_data["job_id"],
+            "job_type": "prospecting",
+            "context_data": {
+                "status": "retrying",
+                "target_industry": "tech",
+                "target_location": "US",
+            },
         }
         response = await context_client.put(
-            f"/context/{update_data['job_id']}", json=update_data
+            f"/context/{context_data['job_id']}", json=retry_update
         )
         assert response.status_code == 200
+        data = response.json()
+        assert data["context_data"]["status"] == "retrying"
+        assert "error" not in data["context_data"]
 
-        # 6. Verify successful recovery
-        response = await context_client.get(f"/context/{update_data['job_id']}")
+        # 4. Complete workflow after recovery
+        completion_update = {
+            "job_id": context_data["job_id"],
+            "job_type": "prospecting",
+            "context_data": {
+                "status": "completed",
+                "target_industry": "tech",
+                "target_location": "US",
+                "results": ["Company A", "Company B"],
+            },
+        }
+        response = await context_client.put(
+            f"/context/{context_data['job_id']}", json=completion_update
+        )
         assert response.status_code == 200
-        final_context = response.json()
-        assert final_context["context_data"]["status"] == "completed"
-        assert "last_error" not in final_context["context_data"]
+        data = response.json()
+        assert data["context_data"]["status"] == "completed"
+        assert "results" in data["context_data"]

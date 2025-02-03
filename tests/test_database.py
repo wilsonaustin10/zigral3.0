@@ -1,21 +1,12 @@
 import pytest
 from tortoise import Tortoise
-from tortoise.exceptions import DBConnectionError, ConfigurationError
+from tortoise.exceptions import DBConnectionError, ConfigurationError, OperationalError
 from context_manager.database import close_db
 
 # Test database configuration
 TEST_TORTOISE_CONFIG = {
     "connections": {
-        "default": {
-            "engine": "tortoise.backends.asyncpg",
-            "credentials": {
-                "host": "localhost",
-                "port": 5432,
-                "user": "user",
-                "password": "password",
-                "database": "zigral_test",
-            },
-        }
+        "default": "sqlite://:memory:"
     },
     "apps": {
         "context_manager": {
@@ -100,25 +91,18 @@ async def test_database_initialization_error():
     """Test database initialization with invalid configuration.
 
     This test verifies that:
-    1. Attempting to connect to a nonexistent database raises DBConnectionError
-    2. The error is properly propagated
-    """
-    # Close any existing connections
-    await Tortoise.close_connections()
+    1. Invalid database configuration is properly handled
+    2. Appropriate error is raised (DBConnectionError or OperationalError)
+    3. Gracefully handles the case where no prior configuration exists
 
-    # Create invalid config with nonexistent database
+    The test attempts to initialize a database with an invalid path,
+    expecting either a DBConnectionError or OperationalError to be raised
+    with a specific error message about being unable to open the database file.
+    """
+    # Try to initialize with invalid configuration
     invalid_config = {
         "connections": {
-            "default": {
-                "engine": "tortoise.backends.asyncpg",
-                "credentials": {
-                    "host": "localhost",
-                    "port": 5432,
-                    "user": "user",
-                    "password": "password",
-                    "database": "nonexistent_db",
-                },
-            }
+            "default": "sqlite:///nonexistent_path/db.sqlite3"
         },
         "apps": {
             "context_manager": {
@@ -128,10 +112,18 @@ async def test_database_initialization_error():
         },
     }
 
-    # Initialize with invalid config and force connection attempt
-    with pytest.raises(DBConnectionError):
+    try:
+        # Attempt to close any existing connections; if not initialized, ignore
+        try:
+            await Tortoise.close_connections()
+        except ConfigurationError:
+            pass
+
         await Tortoise.init(config=invalid_config)
         await Tortoise.generate_schemas()
+        pytest.fail("Should have raised an error")
+    except (DBConnectionError, OperationalError) as e:
+        assert "unable to open database file" in str(e)
 
 
 @pytest.mark.asyncio
@@ -145,12 +137,12 @@ async def test_database_close_error():
     # Initialize database
     await init_test_db()
 
-    # Close connection
+    # Close the connection twice
     await close_db()
+    await close_db()  # Should not raise an error
 
-    # Attempt to close again - this should succeed silently
-    await close_db()
-    assert True  # If we got here, the test passed
+    # Clean up
+    await Tortoise.close_connections()
 
 
 @pytest.mark.asyncio
@@ -168,19 +160,12 @@ async def test_database_schema_creation():
     # Initialize database
     await init_test_db()
 
-    # Verify tables are created
+    # Verify table exists by running a query
     conn = Tortoise.get_connection("default")
     result = await conn.execute_query(
-        """
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public'
-    """
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='context_entries'"
     )
-
-    # Check if our tables exist
-    tables = [row[0] for row in result[1]]
-    assert "context_entries" in tables
+    assert len(result[1]) > 0  # Table exists
 
     # Clean up
     await close_db()

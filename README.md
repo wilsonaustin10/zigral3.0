@@ -38,6 +38,46 @@ The Context Manager is a dedicated microservice that maintains the state and his
   - `DELETE /context/{job_id}`: Remove context
   - `GET /contexts`: List contexts with pagination
 
+### Command Protocol
+The Orchestrator provides a command interface for task execution and coordination:
+
+- **Purpose**: Processes user commands and generates action sequences by:
+  - Validating command structure
+  - Interpreting command intent
+  - Generating appropriate action steps
+  - Coordinating with agents
+
+- **Command Model**:
+  ```python
+  {
+    "command": str,         # User command to execute
+    "context": {           # Command context (flat structure)
+      "job_id": str,       # Associated job identifier
+      "target_industry": str,  # Domain-specific fields
+      "target_location": str,
+      ...                  # Additional context fields
+    }
+  }
+  ```
+
+- **Response Model**:
+  ```python
+  {
+    "objective": str,      # High-level goal of the action sequence
+    "steps": [            # List of action steps
+      {
+        "agent": str,     # Agent to execute the step
+        "action": str,    # Specific action to take
+        "parameters": dict # Action parameters
+      }
+    ]
+  }
+  ```
+
+- **API Endpoints**:
+  - `POST /command`: Process a command and generate action sequence
+  - `GET /health`: Health check endpoint
+
 ### Orchestrator-Context Manager Interaction
 The orchestrator interacts with the Context Manager to:
 
