@@ -177,6 +177,81 @@ async def test_no_real_api_calls(mock_openai_client):
 4. **No Real Calls**: Ensure tests never make actual API calls
 5. **Rate Limits**: Test both API-level and application-level rate limiting
 
+### Logging System
+
+The project uses Loguru for structured logging across all components. Here's how the logging system works:
+
+#### Logger Configuration
+```python
+def get_logger(name: str):
+    """Configure and return a module-specific logger instance"""
+    # Create logs directory if it doesn't exist
+    logs_dir = Path("logs")
+    logs_dir.mkdir(exist_ok=True)
+    
+    # Create a new logger instance with module context
+    new_logger = logger.opt(depth=1)
+    new_logger.remove()  # Remove default handler
+    
+    # Get log level from environment (defaults to INFO)
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    
+    # Configure handlers with consistent format
+    format_string = "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {extra[module]} | {message}"
+    
+    # Console output
+    new_logger.add(sys.stderr, format=format_string, level=log_level)
+    
+    # Error log file (ERROR and above)
+    new_logger.add(
+        "logs/error.log",
+        format=format_string,
+        level="ERROR",
+        rotation="1 day",
+        retention="7 days"
+    )
+    
+    # All logs file
+    new_logger.add(
+        "logs/zigral.log",
+        format=format_string,
+        level=log_level,
+        rotation="1 day",
+        retention="7 days"
+    )
+    
+    return new_logger.bind(module=name)
+```
+
+#### Usage
+```python
+# In your module
+logger = get_logger(__name__)
+
+# Log messages with different levels
+logger.debug("Detailed information for debugging")
+logger.info("General information about program execution")
+logger.warning("Warning messages for potentially problematic situations")
+logger.error("Error messages for serious problems")
+logger.critical("Critical messages for fatal errors")
+```
+
+#### Features
+1. **Module Context**: Each logger is bound with its module name for easy tracking
+2. **Log Rotation**: Daily rotation with 7-day retention for log files
+3. **Environment Configuration**: Log level configurable via `LOG_LEVEL` environment variable
+4. **Structured Output**: Consistent format across console and file outputs
+5. **Error Tracking**: Separate error log file for easy monitoring
+6. **Automatic Directory Creation**: Creates logs directory if it doesn't exist
+
+#### Testing
+The logging system includes comprehensive tests that verify:
+- Logger creation and configuration
+- Log file creation and content
+- Module name binding
+- Log level configuration
+- File cleanup and rotation
+
 ### Dependency Management
 This project uses Poetry for dependency management:
 
