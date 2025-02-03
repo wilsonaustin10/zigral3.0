@@ -91,7 +91,7 @@ async def generate_action_sequence(
     command: str, 
     context: Optional[Dict] = None, 
     client: Optional[AsyncOpenAI] = None
-) -> Dict:
+) -> Union[ActionSequence, ErrorResponse]:
     """
     Main function that uses OpenAI API with dependency injection for testing
     """
@@ -101,11 +101,30 @@ async def generate_action_sequence(
         
         # API call and response handling
         response = await openai_client.chat.completions.create(...)
-        return json.loads(response.choices[0].message.content)
+        return ActionSequence(**json.loads(response.choices[0].message.content))
+    except APIStatusError as e:
+        if e.status_code == 429:
+            return ErrorResponse(error=str(e))
+        raise
     except Exception as e:
         logger.error(f"Error: {str(e)}")
         raise
 ```
+
+#### Rate Limiting
+The system implements two levels of rate limiting:
+
+1. **Application-Level Rate Limiting**:
+   - Uses `slowapi` to limit requests per IP address
+   - Default limit: 5 requests per minute
+   - Returns 429 status code when exceeded
+   - Automatically resets after the time window
+
+2. **OpenAI API Rate Limiting**:
+   - Handles OpenAI's quota and rate limit errors
+   - Returns 200 status with error response when exceeded
+   - Allows client-side handling of rate limit errors
+   - Preserves API contract for error responses
 
 #### Testing Pattern
 1. **Mock Response Fixture**:
@@ -158,16 +177,29 @@ def mock_rate_limited_client():
 
 3. **Test Cases**:
 ```python
-async def test_rate_limit_handling(mock_rate_limited_client):
+def test_openai_rate_limit_handling(mock_rate_limited_client):
     """Test handling of OpenAI rate limit errors"""
-    with pytest.raises(APIStatusError) as exc_info:
-        await generate_action_sequence(command, client=mock_rate_limited_client)
-    assert exc_info.value.status_code == 429
+    response = client.post("/command", json={"command": "Test command"})
+    assert response.status_code == 200
+    error_data = response.json()
+    assert "error" in error_data
+    assert "exceeded your current quota" in error_data["error"]
 
-async def test_no_real_api_calls(mock_openai_client):
-    """Test that no real API calls are made when using a mock"""
-    result = await generate_action_sequence(command, client=mock_openai_client)
-    mock_openai_client.chat.completions.create.assert_called_once()
+def test_api_rate_limit_reset():
+    """Test rate limit window reset"""
+    # First batch (5 successful requests)
+    for _ in range(5):
+        response = client.post("/command", json={"command": "Test"})
+        assert response.status_code == 200
+    
+    # 6th request (rate limited)
+    response = client.post("/command", json={"command": "Test"})
+    assert response.status_code == 429
+    
+    # After window reset
+    with patch('slowapi.extension.time.time', return_value=time.time() + 61):
+        response = client.post("/command", json={"command": "Test"})
+        assert response.status_code == 200
 ```
 
 #### Key Testing Principles
@@ -176,6 +208,8 @@ async def test_no_real_api_calls(mock_openai_client):
 3. **Error Handling**: Test both success and error scenarios
 4. **No Real Calls**: Ensure tests never make actual API calls
 5. **Rate Limits**: Test both API-level and application-level rate limiting
+6. **Response Models**: Use proper response models for both success and error cases
+7. **Window Reset**: Verify rate limit windows reset correctly
 
 ### Logging System
 
