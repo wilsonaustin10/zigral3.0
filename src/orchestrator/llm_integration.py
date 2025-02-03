@@ -1,20 +1,29 @@
 import os
-from typing import Dict, Optional
+import json
+from typing import Dict, Optional, List
 from openai import AsyncOpenAI
 from .logger import get_logger
 
 logger = get_logger(__name__)
 
-# Initialize OpenAI client
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Global client instance
+_client = None
 
-async def generate_action_sequence(command: str, context: Optional[Dict] = None) -> Dict:
+def get_openai_client() -> AsyncOpenAI:
+    """Get or create the OpenAI client instance"""
+    global _client
+    if _client is None:
+        _client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _client
+
+async def generate_action_sequence(command: str, context: Optional[Dict] = None, client: Optional[AsyncOpenAI] = None) -> Dict:
     """
     Generate an action sequence using OpenAI's GPT model
     
     Args:
         command (str): The user's command
         context (Optional[Dict]): Additional context for the command
+        client (Optional[AsyncOpenAI]): OpenAI client instance for testing
         
     Returns:
         Dict: Action sequence in the format:
@@ -33,11 +42,14 @@ async def generate_action_sequence(command: str, context: Optional[Dict] = None)
         }
     """
     try:
+        # Use provided client or get default
+        openai_client = client or get_openai_client()
+        
         # Prepare the prompt with command and context
         prompt = _prepare_prompt(command, context)
         
         # Call OpenAI API
-        response = await client.chat.completions.create(
+        response = await openai_client.chat.completions.create(
             model="gpt-4-1106-preview",  # Using the latest GPT-4 model
             messages=[
                 {"role": "system", "content": _get_system_prompt()},
@@ -48,7 +60,7 @@ async def generate_action_sequence(command: str, context: Optional[Dict] = None)
         )
         
         # Extract and validate the response
-        action_sequence = response.choices[0].message.content
+        action_sequence = json.loads(response.choices[0].message.content)
         logger.info("Successfully generated action sequence")
         
         return action_sequence
