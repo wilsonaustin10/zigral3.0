@@ -71,6 +71,112 @@ zigral/
 
 ## Development
 
+### OpenAI API Integration and Testing
+
+The project uses OpenAI's GPT models for intelligent decision making. Here's how we structure and test the integration:
+
+#### Client Setup Pattern
+```python
+# Global client instance
+_client = None
+
+def get_openai_client() -> AsyncOpenAI:
+    """Get or create the OpenAI client instance"""
+    global _client
+    if _client is None:
+        _client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _client
+
+async def generate_action_sequence(
+    command: str, 
+    context: Optional[Dict] = None, 
+    client: Optional[AsyncOpenAI] = None
+) -> Dict:
+    """
+    Main function that uses OpenAI API with dependency injection for testing
+    """
+    try:
+        # Use provided client or get default
+        openai_client = client or get_openai_client()
+        
+        # API call and response handling
+        response = await openai_client.chat.completions.create(...)
+        return json.loads(response.choices[0].message.content)
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
+        raise
+```
+
+#### Testing Pattern
+1. **Mock Response Fixture**:
+```python
+@pytest.fixture
+def mock_openai_response():
+    """Mock response from OpenAI API"""
+    content = {
+        "objective": "Test objective",
+        "steps": [{"agent": "Test", "action": "test"}]
+    }
+    return AsyncMock(
+        choices=[
+            AsyncMock(
+                message=AsyncMock(
+                    content=json.dumps(content)
+                )
+            )
+        ]
+    )
+```
+
+2. **Rate Limit Error Testing**:
+```python
+@pytest.fixture
+def mock_rate_limited_client():
+    """Mock OpenAI client that simulates a rate limit error"""
+    mock_client = AsyncMock()
+    error_response = {
+        "error": {
+            "message": "You exceeded your current quota",
+            "type": "insufficient_quota",
+            "code": "insufficient_quota"
+        }
+    }
+    
+    mock_response = httpx.Response(
+        status_code=429,
+        request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"),
+        content=json.dumps(error_response).encode()
+    )
+    
+    mock_client.chat.completions.create.side_effect = APIStatusError(
+        message="You exceeded your current quota",
+        response=mock_response,
+        body=error_response
+    )
+    return mock_client
+```
+
+3. **Test Cases**:
+```python
+async def test_rate_limit_handling(mock_rate_limited_client):
+    """Test handling of OpenAI rate limit errors"""
+    with pytest.raises(APIStatusError) as exc_info:
+        await generate_action_sequence(command, client=mock_rate_limited_client)
+    assert exc_info.value.status_code == 429
+
+async def test_no_real_api_calls(mock_openai_client):
+    """Test that no real API calls are made when using a mock"""
+    result = await generate_action_sequence(command, client=mock_openai_client)
+    mock_openai_client.chat.completions.create.assert_called_once()
+```
+
+#### Key Testing Principles
+1. **Dependency Injection**: Pass mock clients to functions for testing
+2. **Response Structure**: Mock the exact OpenAI API response structure
+3. **Error Handling**: Test both success and error scenarios
+4. **No Real Calls**: Ensure tests never make actual API calls
+5. **Rate Limits**: Test both API-level and application-level rate limiting
+
 ### Dependency Management
 This project uses Poetry for dependency management:
 
