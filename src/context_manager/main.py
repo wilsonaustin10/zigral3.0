@@ -146,8 +146,10 @@ async def update_context_entry(job_id: str, context_data: dict):
     
     Args:
         job_id (str): The ID of the job to update
-        context_data (dict): The new context data containing the complete updated state
-            Example: {"context_data": {"status": "completed", "results": {...}}}
+        context_data (dict): The new context data containing the complete updated state.
+            Can be in either format:
+            1. {"context_data": {...}} - Direct context data update
+            2. {"job_id": "...", "job_type": "...", "context_data": {...}} - Full entry update
     
     Returns:
         ContextEntryResponse: The updated context entry
@@ -175,11 +177,16 @@ async def update_context_entry(job_id: str, context_data: dict):
                 detail=f"Job ID mismatch: URL has '{job_id}' but payload has '{context_data['job_id']}'"
             )
 
+        # Handle both request formats
+        actual_context_data = context_data.get("context_data", context_data)
+        if "context_data" not in actual_context_data:  # If it's the full entry format
+            actual_context_data = {"context_data": actual_context_data}
+
         # Create update data with new context data
         update_data = {
             "job_id": job_id,
-            "job_type": existing_context.job_type,
-            "context_data": context_data["context_data"]  # Replace entire context data
+            "job_type": context_data.get("job_type", existing_context.job_type),
+            "context_data": actual_context_data["context_data"]
         }
 
         # Validate the update data
