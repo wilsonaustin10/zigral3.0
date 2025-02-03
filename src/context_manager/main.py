@@ -63,6 +63,13 @@ async def get_context_entry(job_id: str):
 async def update_context_entry(job_id: str, context: ContextEntryCreate):
     """Update a context entry"""
     try:
+        # Check for job ID mismatch
+        if job_id != context.job_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Job ID mismatch: URL has '{job_id}' but payload has '{context.job_id}'"
+            )
+
         context_entry = await update_context(job_id, context)
         if not context_entry:
             raise HTTPException(

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Optional
 from datetime import datetime
 from tortoise import fields, models
@@ -6,9 +6,21 @@ from tortoise.contrib.pydantic import pydantic_model_creator
 
 class ContextEntryBase(BaseModel):
     """Base Pydantic model for context entries"""
-    job_id: str = Field(..., description="Unique identifier for the job")
-    job_type: str = Field(..., description="Type of job (e.g., 'prospecting', 'outreach')")
+    job_id: str = Field(..., min_length=1, description="Unique identifier for the job")
+    job_type: str = Field(..., min_length=1, description="Type of job (e.g., 'prospecting', 'outreach')")
     context_data: Dict = Field(..., description="Arbitrary context data for the job")
+
+    @field_validator('job_type')
+    def validate_job_type(cls, v):
+        if not v.strip():
+            raise ValueError("job_type cannot be empty")
+        return v.strip()
+
+    @field_validator('context_data')
+    def validate_context_data(cls, v):
+        if not v:
+            raise ValueError("context_data cannot be empty")
+        return v
 
 class ContextEntryCreate(ContextEntryBase):
     """Pydantic model for creating context entries"""

@@ -71,6 +71,48 @@ zigral/
 
 ## Development
 
+### Context Manager Validation
+
+The Context Manager implements robust validation and error handling:
+
+1. **Data Validation**:
+   ```python
+   class ContextEntryBase(BaseModel):
+       job_id: str = Field(..., min_length=1)
+       job_type: str = Field(..., min_length=1)
+       context_data: Dict = Field(...)
+
+       @field_validator('job_type')
+       def validate_job_type(cls, v):
+           if not v.strip():
+               raise ValueError("job_type cannot be empty")
+           return v.strip()
+   ```
+
+2. **Error Responses**:
+   - `422 Validation Error`: Invalid or missing required fields
+   - `400 Bad Request`: Job ID mismatch in update operations
+   - `404 Not Found`: Resource doesn't exist
+   - `500 Internal Error`: Unexpected server errors
+
+3. **ID Consistency**:
+   ```python
+   @app.put("/context/{job_id}")
+   async def update_context_entry(job_id: str, context: ContextEntryCreate):
+       if job_id != context.job_id:
+           raise HTTPException(
+               status_code=400,
+               detail=f"Job ID mismatch: URL has '{job_id}' but payload has '{context.job_id}'"
+           )
+   ```
+
+4. **Best Practices**:
+   - Strong type validation with Pydantic
+   - Consistent error response format
+   - Detailed error messages for debugging
+   - Input sanitization (e.g., stripping whitespace)
+   - Comprehensive logging of errors
+
 ### OpenAI API Integration and Testing
 
 The project uses OpenAI's GPT models for intelligent decision making. Here's how we structure and test the integration:
