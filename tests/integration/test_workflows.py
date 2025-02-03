@@ -100,9 +100,7 @@ async def app_lifespan(app):
 async def init_db():
     """Initialize test database with SQLite."""
     config = {
-        "connections": {
-            "default": "sqlite://:memory:"
-        },
+        "connections": {"default": "sqlite://:memory:"},
         "apps": {
             "models": {
                 "models": ["context_manager.models"],
@@ -129,7 +127,7 @@ async def test_database():
     # Verify database is initialized
     connection = Tortoise.get_connection("default")
     assert connection is not None
-    
+
     # Execute query and await the result
     result = await connection.execute_query(
         "SELECT name FROM sqlite_master WHERE type='table'"
@@ -202,9 +200,7 @@ def mock_openai_client():
 async def setup_database():
     """Initialize test database."""
     config = {
-        "connections": {
-            "default": "sqlite://:memory:"
-        },
+        "connections": {"default": "sqlite://:memory:"},
         "apps": {
             "models": {
                 "models": ["context_manager.models"],
@@ -264,8 +260,8 @@ async def test_prospecting_workflow(
                     "job_id": context_data["job_id"],
                     "target_industry": "tech",
                     "target_location": "US",
-                    "status": "initialized"
-                }
+                    "status": "initialized",
+                },
             },
         )
         assert response.status_code == 200
@@ -280,12 +276,11 @@ async def test_prospecting_workflow(
                 "status": "research_completed",
                 "target_industry": "tech",
                 "target_location": "US",
-                "research_results": data["steps"]
+                "research_results": data["steps"],
             }
         }
         response = await context_client.put(
-            f"/context/{context_data['job_id']}", 
-            json=research_update
+            f"/context/{context_data['job_id']}", json=research_update
         )
         assert response.status_code == 200
         data = response.json()
@@ -300,8 +295,10 @@ async def test_prospecting_workflow(
                     "job_id": context_data["job_id"],
                     "target_industry": "tech",
                     "target_location": "US",
-                    "research_results": json.dumps(data["context_data"]["research_results"])
-                }
+                    "research_results": json.dumps(
+                        data["context_data"]["research_results"]
+                    ),
+                },
             },
         )
         assert response.status_code == 200
@@ -316,12 +313,11 @@ async def test_prospecting_workflow(
                 "target_industry": "tech",
                 "target_location": "US",
                 "research_results": data["steps"],
-                "outreach_messages": data["steps"]
+                "outreach_messages": data["steps"],
             }
         }
         response = await context_client.put(
-            f"/context/{context_data['job_id']}", 
-            json=completion_update
+            f"/context/{context_data['job_id']}", json=completion_update
         )
         assert response.status_code == 200
         data = response.json()

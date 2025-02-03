@@ -8,6 +8,7 @@ from tortoise import Tortoise
 from context_manager.main import app as context_app
 from orchestrator.orchestrator import app as orchestrator_app
 from context_manager.database import TORTOISE_ORM
+from context_manager.models import ContextEntryDB
 
 
 @pytest.fixture(scope="session")
@@ -21,9 +22,16 @@ def event_loop():
 @pytest.fixture(scope="session")
 async def setup_database():
     """Initialize test database."""
-    await Tortoise.init(
-        db_url="sqlite://:memory:", modules={"models": ["context_manager.models"]}
-    )
+    config = {
+        "connections": {"default": "sqlite://:memory:"},
+        "apps": {
+            "models": {
+                "models": ["context_manager.models"],
+                "default_connection": "default",
+            }
+        },
+    }
+    await Tortoise.init(config=config)
     await Tortoise.generate_schemas()
     yield
     await Tortoise.close_connections()

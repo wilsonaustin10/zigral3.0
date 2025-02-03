@@ -5,9 +5,7 @@ from context_manager.database import close_db
 
 # Test database configuration
 TEST_TORTOISE_CONFIG = {
-    "connections": {
-        "default": "sqlite://:memory:"
-    },
+    "connections": {"default": "sqlite://:memory:"},
     "apps": {
         "context_manager": {
             "models": ["context_manager.models"],
@@ -101,9 +99,7 @@ async def test_database_initialization_error():
     """
     # Try to initialize with invalid configuration
     invalid_config = {
-        "connections": {
-            "default": "sqlite:///nonexistent_path/db.sqlite3"
-        },
+        "connections": {"default": "sqlite:///nonexistent_path/db.sqlite3"},
         "apps": {
             "context_manager": {
                 "models": ["context_manager.models"],
