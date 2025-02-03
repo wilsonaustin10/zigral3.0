@@ -1,3 +1,29 @@
+"""
+Context Manager API
+
+This module provides a FastAPI application for managing context entries with robust validation
+and error handling. It implements CRUD operations with proper status codes and error responses.
+
+Error Handling:
+- 400: Bad Request (e.g., job ID mismatch)
+- 404: Not Found (resource doesn't exist)
+- 422: Validation Error (invalid input data)
+- 500: Internal Server Error
+
+Validation:
+1. Existence Validation: Checks if resources exist before operations
+2. Data Validation: Ensures input data meets schema requirements
+3. Business Logic Validation: Verifies business rules (e.g., job ID matching)
+
+Example Error Responses:
+{
+    "detail": "Context entry not found for job example_job"
+}
+{
+    "detail": "Job ID mismatch: URL has 'job1' but payload has 'job2'"
+}
+"""
+
 from fastapi import FastAPI, HTTPException, Query
 from typing import List, Optional
 from .models import ContextEntryCreate, ContextEntryResponse
@@ -13,7 +39,11 @@ from .crud import (
 from .logger import get_logger
 
 # Initialize FastAPI app
-app = FastAPI(title="Zigral Context Manager", version="1.0.0")
+app = FastAPI(
+    title="Zigral Context Manager",
+    version="1.0.0",
+    description=__doc__
+)
 logger = get_logger(__name__)
 settings = get_settings()
 
@@ -60,9 +90,26 @@ async def get_context_entry(job_id: str):
         )
 
 @app.put("/context/{job_id}", response_model=ContextEntryResponse)
-async def update_context_entry(job_id: str, context: ContextEntryCreate):
+async def update_context_entry(job_id: str, context_data: dict):
     """Update a context entry"""
     try:
+        # First check if the context entry exists
+        existing_context = await get_context(job_id)
+        if not existing_context:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Context entry not found for job {job_id}"
+            )
+
+        # Validate the update data
+        try:
+            context = ContextEntryCreate(**context_data)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=422,
+                detail=str(e)
+            )
+
         # Check for job ID mismatch
         if job_id != context.job_id:
             raise HTTPException(
@@ -70,11 +117,13 @@ async def update_context_entry(job_id: str, context: ContextEntryCreate):
                 detail=f"Job ID mismatch: URL has '{job_id}' but payload has '{context.job_id}'"
             )
 
+        # Update the context entry
         context_entry = await update_context(job_id, context)
         if not context_entry:
+            # This should never happen since we checked existence above
             raise HTTPException(
-                status_code=404,
-                detail=f"Context entry not found for job {job_id}"
+                status_code=500,
+                detail=f"Error updating context entry for job {job_id}"
             )
         return context_entry
     except HTTPException:
