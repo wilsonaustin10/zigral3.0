@@ -108,18 +108,19 @@ async def test_database_initialization_error():
         },
     }
 
+    # Attempt to close any existing connections; if not initialized, ignore
     try:
-        # Attempt to close any existing connections; if not initialized, ignore
-        try:
-            await Tortoise.close_connections()
-        except ConfigurationError:
-            pass
+        await Tortoise.close_connections()
+    except ConfigurationError:
+        pass
 
+    # Attempt to initialize with invalid configuration
+    with pytest.raises((DBConnectionError, OperationalError)) as exc_info:
         await Tortoise.init(config=invalid_config)
         await Tortoise.generate_schemas()
-        pytest.fail("Should have raised an error")
-    except (DBConnectionError, OperationalError) as e:
-        assert "unable to open database file" in str(e)
+    
+    # Verify the error message
+    assert "unable to open database file" in str(exc_info.value)
 
 
 @pytest.mark.asyncio

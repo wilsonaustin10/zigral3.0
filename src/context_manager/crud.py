@@ -69,8 +69,14 @@ async def update_context(
             logger.info(f"No context entry found for job {job_id}")
             return None
 
-        # Update the entry with new data
+        # Update the entry with new data, preserving the status if not provided
         update_data = context.model_dump()
+        if "context_data" in update_data:
+            if "status" not in update_data["context_data"]:
+                # Preserve existing status if not provided in update
+                update_data["context_data"]["status"] = context_entry.context_data.get("status")
+
+        # Update the entry
         context_entry.job_id = update_data["job_id"]
         context_entry.job_type = update_data["job_type"]
         context_entry.context_data = update_data["context_data"]
