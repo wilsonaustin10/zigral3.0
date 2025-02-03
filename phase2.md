@@ -131,6 +131,16 @@ Below is a detailed plan for Phase 2 along with an "order of file creation" brea
    - Create `tests/agents/shaun/test_shaun.py`
    - Update existing tests (if necessary) in `tests/test_orchestrator.py` to include integration with the new agents.
 
+### Running the Application in Development
+
+Running the application in your development environment is crucial to:
+
+- Validate that each new agent works correctly.
+- Test the communication between the orchestrator and the agents.
+- Catch integration issues early (e.g., environment variable misconfiguration, messaging errors).
+- Monitor logs and performance as you simulate real-world scenarios.
+
+You can start by running each microservice individually (using commands like uvicorn src/agents/lincoln/main.py --port 8002 and similar for Shaun) and then test the overall integration by running the orchestrator and sending commands through the UI or via API tools like Postman.
 
 ## Summary
 
