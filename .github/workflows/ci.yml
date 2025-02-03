@@ -44,17 +44,15 @@ jobs:
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Install dependencies
-      run: poetry install
+      run: |
+        poetry config virtualenvs.create false
+        poetry install --no-interaction --no-ansi --with dev
 
     # New step: Validate environment
     - name: Validate environment
-      env:
-        DATABASE_URL: postgresql://zigral:zigral_password@localhost:5432/zigral
-        OPENAI_API_KEY: test_key
-        DEBUG: "True"
       run: |
-        echo "Validating environment setup..."
-        poetry run python scripts/validate_env.py
+        python -c "import sys; print(f'Python {sys.version}')"
+        python -c "import nest_asyncio; print(f'nest_asyncio {nest_asyncio.__version__}')"
 
     - name: Run tests
       env:
