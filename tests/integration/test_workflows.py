@@ -72,7 +72,7 @@ settings.TORTOISE_ORM = {
             "min_size": 1,
             "max_size": 5,  # Allow multiple concurrent connections
             "max_queries": 50000,
-            "max_inactive_connection_lifetime": 300  # 5 minutes
+            "max_inactive_connection_lifetime": 300,  # 5 minutes
         }
     },
     "apps": {
@@ -82,13 +82,14 @@ settings.TORTOISE_ORM = {
         }
     },
     "use_tz": False,
-    "timezone": "UTC"
+    "timezone": "UTC",
 }
+
 
 @pytest.fixture(scope="session")
 def event_loop():
     """Create an instance of the default event loop for the test session.
-    
+
     This fixture ensures that we have a consistent event loop throughout the test session,
     which is necessary for proper async operation and database connection management.
     """
@@ -97,19 +98,20 @@ def event_loop():
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    
+
     yield loop
-    
+
     # Clean up the loop
     if not loop.is_closed():
         loop.run_until_complete(loop.shutdown_asyncgens())
         loop.close()
     asyncio.set_event_loop(None)
 
+
 @asynccontextmanager
 async def app_lifespan(app):
     """Lifespan context manager for FastAPI application.
-    
+
     This context manager ensures proper database initialization and cleanup for the FastAPI
     application during testing. It:
     1. Initializes the database connection
@@ -124,10 +126,11 @@ async def app_lifespan(app):
     finally:
         await close_db()
 
+
 @pytest.mark.asyncio
 async def test_database():
     """Test database initialization and cleanup.
-    
+
     Verifies that:
     1. Database connection can be established
     2. Schemas can be created
@@ -135,22 +138,23 @@ async def test_database():
     """
     await init_db()
     await Tortoise.generate_schemas()
-    
+
     # Verify database is initialized
     connection = Tortoise.get_connection("default")
     assert connection is not None
     assert connection.capabilities.dialect == "postgres"
-    
+
     # Verify models are registered
     assert "context_manager" in Tortoise.apps
     assert len(Tortoise.apps["context_manager"].keys()) > 0
-    
+
     await close_db()
+
 
 @pytest.fixture(autouse=True)
 async def setup_database():
     """Automatically set up and tear down database for each test.
-    
+
     This fixture runs automatically for each test, ensuring that:
     1. Each test starts with a clean database state
     2. Database connections are properly managed
@@ -163,10 +167,11 @@ async def setup_database():
     finally:
         await close_db()
 
+
 @pytest.fixture
 async def context_client():
     """Create an async test client for the context manager API.
-    
+
     Returns an httpx.AsyncClient configured to:
     1. Use the proper FastAPI application
     2. Handle lifespan events correctly
@@ -176,23 +181,27 @@ async def context_client():
     async with httpx.AsyncClient(app=context_app, base_url="http://test") as client:
         yield client
 
+
 @pytest.fixture
 async def orchestrator_client():
     """Create an async test client for the orchestrator API.
-    
+
     Returns an httpx.AsyncClient configured to:
     1. Use the proper FastAPI application
     2. Handle lifespan events correctly
     3. Make async HTTP requests to test endpoints
     """
     orchestrator_app.router.lifespan_context = app_lifespan
-    async with httpx.AsyncClient(app=orchestrator_app, base_url="http://test") as client:
+    async with httpx.AsyncClient(
+        app=orchestrator_app, base_url="http://test"
+    ) as client:
         yield client
+
 
 @pytest.fixture
 def mock_openai_client():
     """Create a mock OpenAI client for testing.
-    
+
     Returns an AsyncMock configured to simulate OpenAI API responses with:
     1. Predefined action sequences for workflow testing
     2. Consistent response format
@@ -204,51 +213,50 @@ def mock_openai_client():
             {
                 "agent": "research",
                 "action": "search_linkedin",
-                "parameters": {"industry": "tech", "location": "US"}
+                "parameters": {"industry": "tech", "location": "US"},
             },
             {
                 "agent": "outreach",
                 "action": "compose_message",
-                "parameters": {"template": "introduction"}
-            }
-        ]
+                "parameters": {"template": "introduction"},
+            },
+        ],
     }
-    
+
     # Create mock response hierarchy
     mock_response = AsyncMock()
-    mock_response.choices = [
-        AsyncMock(message=AsyncMock(content=json.dumps(content)))
-    ]
+    mock_response.choices = [AsyncMock(message=AsyncMock(content=json.dumps(content)))]
     mock_completions = AsyncMock()
     mock_completions.create = AsyncMock(return_value=mock_response)
     mock_chat = MagicMock()
     mock_chat.completions = mock_completions
     mock_client = AsyncMock()
     mock_client.chat = mock_chat
-    
+
     return mock_client
+
 
 @pytest.mark.asyncio
 async def test_prospecting_workflow(
-    setup_database,
-    context_client,
-    orchestrator_client,
-    mock_openai_client
+    setup_database, context_client, orchestrator_client, mock_openai_client
 ):
     """Test complete prospecting workflow from start to finish.
-    
+
     This test verifies the normal workflow execution path with proper state transitions:
     1. Creating a new prospecting job (status: initialized)
     2. Getting action sequence from LLM
     3. Executing research step (status: research_completed)
     4. Executing outreach step (status: completed)
     5. Verifying final state and results
-    
+
     The test ensures that context updates completely replace the context data,
     maintaining a clean state at each step of the workflow.
     """
     # Mock OpenAI client
-    with patch('orchestrator.llm_integration.get_openai_client', return_value=mock_openai_client):
+    with patch(
+        "orchestrator.llm_integration.get_openai_client",
+        return_value=mock_openai_client,
+    ):
         # 1. Create new context for prospecting job
         context_data = {
             "job_id": "test_prospect_001",
@@ -256,8 +264,8 @@ async def test_prospecting_workflow(
             "context_data": {
                 "target_industry": "tech",
                 "target_location": "US",
-                "status": "initialized"
-            }
+                "status": "initialized",
+            },
         }
         response = await context_client.post("/context", json=context_data)
         assert response.status_code == 200
@@ -267,7 +275,7 @@ async def test_prospecting_workflow(
         # 2. Start workflow in orchestrator
         command = {
             "command": "Find tech companies in US for prospecting",
-            "job_id": "test_prospect_001"
+            "job_id": "test_prospect_001",
         }
         response = await orchestrator_client.post("/command", json=command)
         assert response.status_code == 200
@@ -279,7 +287,7 @@ async def test_prospecting_workflow(
         research_result = {
             "companies": [
                 {"name": "TechCorp", "industry": "tech", "location": "US"},
-                {"name": "InnovateTech", "industry": "tech", "location": "US"}
+                {"name": "InnovateTech", "industry": "tech", "location": "US"},
             ]
         }
         update_data = {
@@ -289,12 +297,11 @@ async def test_prospecting_workflow(
                 "target_industry": "tech",
                 "target_location": "US",
                 "status": "research_completed",
-                "research_results": research_result
-            }
+                "research_results": research_result,
+            },
         }
         response = await context_client.put(
-            f"/context/{update_data['job_id']}",
-            json=update_data
+            f"/context/{update_data['job_id']}", json=update_data
         )
         assert response.status_code == 200
 
@@ -309,13 +316,12 @@ async def test_prospecting_workflow(
         outreach_result = {
             "messages_sent": 2,
             "message_template": "introduction",
-            "target_companies": ["TechCorp", "InnovateTech"]
+            "target_companies": ["TechCorp", "InnovateTech"],
         }
         update_data["context_data"]["outreach_results"] = outreach_result
         update_data["context_data"]["status"] = "completed"
         response = await context_client.put(
-            f"/context/{update_data['job_id']}",
-            json=update_data
+            f"/context/{update_data['job_id']}", json=update_data
         )
         assert response.status_code == 200
 
@@ -326,26 +332,27 @@ async def test_prospecting_workflow(
         assert final_context["context_data"]["status"] == "completed"
         assert "outreach_results" in final_context["context_data"]
 
+
 @pytest.mark.asyncio
 async def test_error_recovery_workflow(
-    setup_database,
-    context_client,
-    orchestrator_client,
-    mock_openai_client
+    setup_database, context_client, orchestrator_client, mock_openai_client
 ):
     """Test workflow error recovery and checkpoint restoration.
-    
+
     This test verifies the error recovery path with proper state transitions:
     1. Starting a workflow (status: initialized)
     2. Encountering an error (status: error, with error details)
     3. Attempting recovery (status: retrying, error details removed)
     4. Completing the workflow (status: completed, with results)
-    
+
     The test ensures that error states are properly managed and that the context
     can be cleaned up during recovery by completely replacing the context data.
     """
     # Mock OpenAI client
-    with patch('orchestrator.llm_integration.get_openai_client', return_value=mock_openai_client):
+    with patch(
+        "orchestrator.llm_integration.get_openai_client",
+        return_value=mock_openai_client,
+    ):
         # 1. Initialize workflow
         context_data = {
             "job_id": "test_recovery_001",
@@ -353,8 +360,8 @@ async def test_error_recovery_workflow(
             "context_data": {
                 "target_industry": "tech",
                 "target_location": "US",
-                "status": "initialized"
-            }
+                "status": "initialized",
+            },
         }
         response = await context_client.post("/context", json=context_data)
         assert response.status_code == 200
@@ -363,7 +370,7 @@ async def test_error_recovery_workflow(
         error_data = {
             "error": "API rate limit exceeded",
             "step": "research",
-            "timestamp": datetime.now(UTC).isoformat()
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         update_data = {
             "job_id": "test_recovery_001",
@@ -372,12 +379,11 @@ async def test_error_recovery_workflow(
                 "target_industry": "tech",
                 "target_location": "US",
                 "status": "error",
-                "last_error": error_data
-            }
+                "last_error": error_data,
+            },
         }
         response = await context_client.put(
-            f"/context/{update_data['job_id']}",
-            json=update_data
+            f"/context/{update_data['job_id']}", json=update_data
         )
         assert response.status_code == 200
 
@@ -392,8 +398,7 @@ async def test_error_recovery_workflow(
         update_data["context_data"]["status"] = "retrying"
         update_data["context_data"].pop("last_error")
         response = await context_client.put(
-            f"/context/{update_data['job_id']}",
-            json=update_data
+            f"/context/{update_data['job_id']}", json=update_data
         )
         assert response.status_code == 200
 
@@ -403,8 +408,7 @@ async def test_error_recovery_workflow(
             "companies": [{"name": "TechCorp", "industry": "tech"}]
         }
         response = await context_client.put(
-            f"/context/{update_data['job_id']}",
-            json=update_data
+            f"/context/{update_data['job_id']}", json=update_data
         )
         assert response.status_code == 200
 
@@ -413,4 +417,4 @@ async def test_error_recovery_workflow(
         assert response.status_code == 200
         final_context = response.json()
         assert final_context["context_data"]["status"] == "completed"
-        assert "last_error" not in final_context["context_data"] 
+        assert "last_error" not in final_context["context_data"]

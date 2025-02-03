@@ -4,44 +4,48 @@ from pathlib import Path
 from src.orchestrator.logger import get_logger as get_orch_logger
 from src.context_manager.logger import get_logger as get_cm_logger
 
+
 @pytest.fixture(autouse=True)
 def cleanup_logs():
     """Clean up log files before and after each test"""
     # Clean up before test
     for log_file in Path("logs").glob("*.log"):
         log_file.unlink(missing_ok=True)
-    
+
     yield
-    
+
     # Clean up after test
     for log_file in Path("logs").glob("*.log"):
         log_file.unlink(missing_ok=True)
+
 
 def test_orchestrator_logger_creation():
     """Test creating an orchestrator logger"""
     logger = get_orch_logger("test_module")
     assert logger is not None
-    
+
     # Test that logging works and includes the module name
     logger.info("Test message")
-    
+
     with open("logs/zigral.log", "r") as f:
         content = f.read()
         assert "test_module" in content
         assert "Test message" in content
 
+
 def test_context_manager_logger_creation():
     """Test creating a context manager logger"""
     logger = get_cm_logger("test_module")
     assert logger is not None
-    
+
     # Test that logging works and includes the module name
     logger.info("Test message")
-    
+
     with open("logs/zigral.log", "r") as f:
         content = f.read()
         assert "test_module" in content
         assert "Test message" in content
+
 
 def test_log_file_creation():
     """Test that log files are created"""
@@ -64,6 +68,7 @@ def test_log_file_creation():
         assert "Test error message" in content
         assert "test_module" in content
 
+
 def test_context_manager_log_file_creation():
     """Test that context manager log files are created"""
     logger = get_cm_logger("test_module")
@@ -85,6 +90,7 @@ def test_context_manager_log_file_creation():
         assert "Test error message" in content
         assert "test_module" in content
 
+
 def test_log_level_from_env(monkeypatch):
     """Test that log level is correctly set from environment variable"""
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
@@ -98,4 +104,4 @@ def test_log_level_from_env(monkeypatch):
         content = f.read()
         assert "Debug message" in content
         assert "Info message" in content
-        assert "test_module" in content 
+        assert "test_module" in content
