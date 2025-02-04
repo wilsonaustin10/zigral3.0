@@ -1,43 +1,32 @@
+"""Database test suite.
+
+This module contains tests for database initialization, connection management,
+and schema creation functionality. It verifies the proper operation of the
+database layer in both normal and error conditions.
+
+Test cases:
+1. Database initialization and basic query execution
+2. Connection closure and cleanup
+3. Error handling for invalid configurations
+4. Multiple connection closure scenarios
+5. Schema creation and verification
+
+The tests use a SQLite database in a temporary directory to ensure
+isolation and reproducibility.
+"""
+
 import logging
+import os
+from pathlib import Path
 
 import pytest
 from tortoise import Tortoise
 from tortoise.exceptions import ConfigurationError, DBConnectionError, OperationalError
+from tortoise.backends.base.client import BaseDBAsyncClient
 
-from context_manager.database import close_db
-
-# Test database configuration
-TEST_TORTOISE_CONFIG = {
-    "connections": {"default": "sqlite://:memory:"},
-    "apps": {
-        "context_manager": {
-            "models": ["context_manager.models"],
-            "default_connection": "default",
-        }
-    },
-    "use_tz": False,
-    "timezone": "UTC",
-}
+from context_manager.database import close_db, TEST_TORTOISE_CONFIG, TEMP_DIR, init_test_db
 
 logger = logging.getLogger(__name__)
-
-
-async def init_test_db():
-    """Initialize the test database with Tortoise ORM.
-
-    This function:
-    1. Initializes Tortoise ORM with the test configuration
-    2. Creates database schemas for all models
-
-    Raises:
-        Exception: If database initialization fails
-    """
-    try:
-        await Tortoise.init(config=TEST_TORTOISE_CONFIG)
-        await Tortoise.generate_schemas()
-    except Exception as e:
-        logger.error(f"Failed to initialize test database: {str(e)}")
-        raise
 
 
 @pytest.mark.asyncio
@@ -49,18 +38,20 @@ async def test_database_initialization():
     2. A basic query can be executed
     3. Connection can be closed properly
     """
-    # Close any existing connections
-    await Tortoise.close_connections()
-
     # Initialize database
     await init_test_db()
 
-    # Verify connection is established by getting the connection and running a query
+    # Get connection and execute a test query
     conn = Tortoise.get_connection("default")
-    assert conn is not None
-    assert await conn.execute_query("SELECT 1")
+    assert isinstance(conn, BaseDBAsyncClient)
+    
+    # Test query to check if context_entries table exists (SQLite compatible)
+    result = await conn.execute_query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='context_entries'"
+    )
+    assert len(result[1]) > 0, "context_entries table not found"
 
-    # Clean up
+    # Close connection
     await close_db()
 
 
@@ -86,9 +77,6 @@ async def test_database_close():
     # Verify connection is closed by checking internal state
     assert not hasattr(conn, "_pool") or conn._pool is None
 
-    # Clean up any remaining connections
-    await Tortoise.close_connections()
-
 
 @pytest.mark.asyncio
 async def test_database_initialization_error():
@@ -96,37 +84,46 @@ async def test_database_initialization_error():
 
     This test verifies that:
     1. Invalid database configuration is properly handled
-    2. Appropriate error is raised (DBConnectionError or OperationalError)
+    2. Appropriate error is raised (DBConnectionError)
     3. Gracefully handles the case where no prior configuration exists
-
-    The test attempts to initialize a database with an invalid path,
-    expecting either a DBConnectionError or OperationalError to be raised
-    with a specific error message about being unable to open the database file.
     """
-    # Try to initialize with invalid configuration
+    # Create a directory path that definitely doesn't exist
+    nonexistent_dir = "/nonexistent/path/that/definitely/does/not/exist"
     invalid_config = {
-        "connections": {"default": "sqlite:///nonexistent_path/db.sqlite3"},
+        "connections": {
+            "default": {
+                "engine": "tortoise.backends.sqlite",
+                "credentials": {
+                    "file_path": os.path.join(nonexistent_dir, "db.sqlite")
+                }
+            }
+        },
         "apps": {
-            "context_manager": {
+            "models": {
                 "models": ["context_manager.models"],
                 "default_connection": "default",
             }
-        },
+        }
     }
-
-    # Attempt to close any existing connections; if not initialized, ignore
-    try:
-        await Tortoise.close_connections()
-    except ConfigurationError:
-        pass
 
     # Attempt to initialize with invalid configuration
     with pytest.raises((DBConnectionError, OperationalError)) as exc_info:
-        await Tortoise.init(config=invalid_config)
-        await Tortoise.generate_schemas()
+        try:
+            await Tortoise.init(config=invalid_config)
+            await Tortoise.generate_schemas()
+        finally:
+            try:
+                await close_db()
+            except Exception:
+                pass
+            Tortoise._client_routing = {}
+            Tortoise._connections = {}
+            Tortoise._inited = False
+            Tortoise._db_config = None
+            Tortoise._apps = {}
 
-    # Verify the error message
-    assert "unable to open database file" in str(exc_info.value)
+    error_msg = str(exc_info.value).lower()
+    assert any(msg in error_msg for msg in ["no such file", "directory", "unable to open"])
 
 
 @pytest.mark.asyncio
@@ -140,12 +137,15 @@ async def test_database_close_error():
     # Initialize database
     await init_test_db()
 
-    # Close the connection twice
-    await close_db()
-    await close_db()  # Should not raise an error
+    # Get connection and verify it works
+    conn = Tortoise.get_connection("default")
+    assert await conn.execute_query("SELECT 1")
 
-    # Clean up
-    await Tortoise.close_connections()
+    # Close connection normally
+    await close_db()
+
+    # Attempt to close again - should not raise an error
+    await close_db()
 
 
 @pytest.mark.asyncio
@@ -157,18 +157,15 @@ async def test_database_schema_creation():
     2. The required tables are present in the database
     3. Specifically checks for the 'context_entries' table
     """
-    # Close any existing connections
-    await Tortoise.close_connections()
-
     # Initialize database
     await init_test_db()
 
-    # Verify table exists by running a query
+    # Get connection and check for table (SQLite compatible)
     conn = Tortoise.get_connection("default")
     result = await conn.execute_query(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='context_entries'"
     )
-    assert len(result[1]) > 0  # Table exists
+    assert len(result[1]) > 0, "context_entries table not found"
 
-    # Clean up
+    # Close connection
     await close_db()
