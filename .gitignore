@@ -30,6 +30,9 @@ build/
 htmlcov/
 .pytest_cache/
 
+# Coverage reports
+coverage.xml
+
 # OS specific
 .DS_Store
 Thumbs.db .env.test

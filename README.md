@@ -1,6 +1,77 @@
 # Zigral 3.0
 
-Zigral is an advanced automation platform that orchestrates multiple AI agents to perform complex, repetitive sales prospecting and outreach tasks. The system uses a combination of LLM-powered decision making and specialized agents to execute tasks efficiently and intelligently.
+An autonomous sales development application that acts as your virtual sales development representative.
+
+## Project Structure
+
+```
+zigral/
+├── src/
+│   ├── orchestrator/       # Project Manager component
+│   ├── context_manager/    # Context Manager microservice
+│   └── agents/            # Agent modules
+│       ├── lincoln/       # LinkedIn Agent
+│       │   ├── agent.py
+│       │   ├── browser.py
+│       │   ├── search.py
+│       │   └── data_collector.py
+│       └── shaun/         # Google Sheets Agent
+├── tests/
+│   ├── agents/           # Agent-specific tests
+│   │   ├── lincoln/      # LinkedIn Agent tests
+│   │   └── shaun/        # Google Sheets Agent tests
+│   ├── integration/      # Integration tests
+│   └── unit tests       # Individual component tests
+└── docs/                # Documentation
+```
+
+## Development Setup
+
+1. Install dependencies:
+   ```bash
+   poetry install
+   ```
+
+2. Set up environment variables:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
+
+3. Run tests:
+   ```bash
+   poetry run pytest tests/ -v --cov=src --cov-report=xml
+   ```
+
+## Test Coverage
+
+Current test coverage: 82%
+
+Key components:
+- Orchestrator: 86%
+- Context Manager: 74%
+- Database Layer: 50%
+- Agent Modules: In development
+
+## Running the Application
+
+1. Start the services:
+   ```bash
+   docker-compose up -d
+   ```
+
+2. Access the API at `http://localhost:8000`
+
+## Contributing
+
+1. Create a feature branch
+2. Make your changes
+3. Run tests and ensure coverage
+4. Submit a pull request
+
+## License
+
+Proprietary - All rights reserved
 
 ## Features
 
@@ -96,18 +167,6 @@ The orchestrator interacts with the Context Manager to:
 4. **Error Handling**:
    - Maintains checkpoint data for recovery
    - Stores error states for debugging
-
-## Project Structure
-
-```
-zigral/
-├── src/
-│   ├── orchestrator/      # Core orchestration logic
-│   ├── context_manager/   # Context management service
-│   └── main.py           # Application entry point
-├── tests/                # Test suite
-└── [configuration files]
-```
 
 ## Development
 
