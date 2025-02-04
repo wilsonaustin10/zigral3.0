@@ -118,7 +118,7 @@ async def test_database_initialization_error():
     with pytest.raises((DBConnectionError, OperationalError)) as exc_info:
         await Tortoise.init(config=invalid_config)
         await Tortoise.generate_schemas()
-    
+
     # Verify the error message
     assert "unable to open database file" in str(exc_info.value)
 
