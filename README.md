@@ -22,7 +22,8 @@ zigral/
 │   │   └── shaun/        # Google Sheets Agent tests
 │   ├── integration/      # Integration tests
 │   └── unit tests       # Individual component tests
-└── docs/                # Documentation
+└── scripts/             # Development and utility scripts
+    └── lint.py         # Linting and formatting tools
 ```
 
 ## Development Setup
@@ -42,6 +43,50 @@ zigral/
    ```bash
    poetry run pytest tests/ -v --cov=src --cov-report=xml
    ```
+
+## Code Quality Tools
+
+The project uses multiple tools to ensure code quality:
+
+1. **Black** - Code formatting:
+   ```bash
+   poetry run black .  # Format code
+   poetry run black . --check  # Check formatting
+   ```
+
+2. **isort** - Import sorting:
+   ```bash
+   poetry run isort .  # Sort imports
+   poetry run isort . --check-only --diff  # Check import sorting
+   ```
+
+3. **Flake8** - Linting:
+   ```bash
+   poetry run flake8  # Run linter
+   ```
+
+4. **Combined Commands**:
+   ```bash
+   poetry run lint    # Run all checks (black, isort, flake8)
+   poetry run format  # Format code (black, isort)
+   ```
+
+### Configuration Files
+
+- `.flake8` - Flake8 configuration
+- `pyproject.toml` - Black and isort configuration
+- `scripts/lint.py` - Combined linting tools
+
+### Code Style Guidelines
+
+1. **Line Length**: Maximum 88 characters (Black default)
+2. **Import Ordering**:
+   - Standard library imports
+   - Third-party imports
+   - First-party imports (orchestrator, context_manager, agents)
+   - Local imports
+3. **Docstrings**: Required for all public modules, functions, classes, and methods
+4. **Type Hints**: Used throughout the codebase
 
 ## Test Coverage
 
@@ -66,8 +111,35 @@ Key components:
 
 1. Create a feature branch
 2. Make your changes
-3. Run tests and ensure coverage
-4. Submit a pull request
+3. Ensure code quality:
+   ```bash
+   poetry run lint  # Run all linting checks
+   poetry run format  # Format code if needed
+   ```
+4. Run tests:
+   ```bash
+   poetry run pytest tests/ -v --cov=src --cov-report=xml
+   ```
+5. Submit a pull request
+
+## CI/CD Pipeline
+
+The project uses GitHub Actions for continuous integration:
+
+1. **Code Quality**:
+   - Black formatting check
+   - isort import sorting
+   - Flake8 linting
+   - Line length validation
+
+2. **Testing**:
+   - Unit tests
+   - Integration tests
+   - Coverage reporting
+
+3. **Docker Builds**:
+   - Builds container images
+   - Pushes to GitHub Container Registry
 
 ## License
 
