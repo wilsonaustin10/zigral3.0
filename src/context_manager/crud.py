@@ -75,9 +75,8 @@ async def update_context(
         if "context_data" in update_data:
             if "status" not in update_data["context_data"]:
                 # Preserve existing status if not provided in update
-                update_data["context_data"]["status"] = context_entry.context_data.get(
-                    "status"
-                )
+                current_status = context_entry.context_data.get("status")
+                update_data["context_data"]["status"] = current_status
 
         # Update the entry
         context_entry.job_id = update_data["job_id"]

@@ -1,6 +1,7 @@
 import pytest
 from tortoise import Tortoise
 from tortoise.exceptions import ConfigurationError, DBConnectionError, OperationalError
+import logging
 
 from context_manager.database import close_db
 
@@ -17,6 +18,7 @@ TEST_TORTOISE_CONFIG = {
     "timezone": "UTC",
 }
 
+logger = logging.getLogger(__name__)
 
 async def init_test_db():
     """Initialize the test database with Tortoise ORM.
@@ -32,6 +34,7 @@ async def init_test_db():
         await Tortoise.init(config=TEST_TORTOISE_CONFIG)
         await Tortoise.generate_schemas()
     except Exception as e:
+        logger.error(f"Failed to initialize test database: {str(e)}")
         raise
 
 

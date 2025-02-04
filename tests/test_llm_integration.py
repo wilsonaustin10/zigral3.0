@@ -1,10 +1,9 @@
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import httpx
-import openai
 import pytest
-from openai import APIStatusError, OpenAIError
+from openai import APIStatusError
 
 from orchestrator.llm_integration import (
     _get_system_prompt,

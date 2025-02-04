@@ -5,9 +5,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from openai import APIStatusError, OpenAIError
 
-from orchestrator.llm_integration import get_openai_client
 from orchestrator.orchestrator import app
 
 

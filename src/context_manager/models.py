@@ -27,7 +27,7 @@ Database Schema:
 """
 
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from tortoise import fields, models
