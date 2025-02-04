@@ -1,8 +1,10 @@
 import os
-import pytest
 from pathlib import Path
-from src.orchestrator.logger import get_logger as get_orch_logger
+
+import pytest
+
 from src.context_manager.logger import get_logger as get_cm_logger
+from src.orchestrator.logger import get_logger as get_orch_logger
 
 
 @pytest.fixture(autouse=True)

@@ -1,6 +1,7 @@
 from typing import List, Optional
-from .models import ContextEntryDB, ContextEntryCreate
+
 from .logger import get_logger
+from .models import ContextEntryCreate, ContextEntryDB
 
 logger = get_logger(__name__)
 

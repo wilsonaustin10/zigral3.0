@@ -1,7 +1,9 @@
-import os
 import json
-from typing import Dict, Optional, List
+import os
+from typing import Dict, List, Optional
+
 from openai import AsyncOpenAI
+
 from .logger import get_logger
 
 logger = get_logger(__name__)

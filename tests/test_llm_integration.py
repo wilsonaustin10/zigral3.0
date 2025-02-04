@@ -1,14 +1,16 @@
-import pytest
 import json
 from unittest.mock import AsyncMock, patch
-from openai import OpenAIError, APIStatusError
+
 import httpx
-from orchestrator.llm_integration import (
-    generate_action_sequence,
-    _prepare_prompt,
-    _get_system_prompt,
-)
 import openai
+import pytest
+from openai import APIStatusError, OpenAIError
+
+from orchestrator.llm_integration import (
+    _get_system_prompt,
+    _prepare_prompt,
+    generate_action_sequence,
+)
 
 
 @pytest.fixture

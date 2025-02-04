@@ -69,20 +69,22 @@ Lifecycle Management:
 - Proper cleanup on shutdown
 """
 
-from fastapi import FastAPI, HTTPException, Query
 from contextlib import asynccontextmanager
 from typing import List, Optional
-from .models import ContextEntryCreate, ContextEntryResponse
-from .database import init_db, close_db
+
+from fastapi import FastAPI, HTTPException, Query
+
 from .config import get_settings
 from .crud import (
     create_context,
-    get_context,
-    update_context,
     delete_context,
+    get_context,
     list_contexts,
+    update_context,
 )
+from .database import close_db, init_db
 from .logger import get_logger
+from .models import ContextEntryCreate, ContextEntryResponse
 
 
 @asynccontextmanager

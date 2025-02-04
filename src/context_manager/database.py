@@ -1,5 +1,6 @@
 """Database configuration and initialization."""
 from tortoise import Tortoise
+
 from .config import get_settings
 from .logger import get_logger
 

@@ -59,23 +59,24 @@ State Transitions:
    - completed: After successful recovery
 """
 
-import pytest
-from fastapi.testclient import TestClient
-from tortoise import Tortoise
-from unittest.mock import AsyncMock, patch, MagicMock
+import asyncio
 import json
 import os
-from datetime import datetime, UTC
-import asyncio
-from openai import AsyncOpenAI
 from contextlib import asynccontextmanager
-import nest_asyncio
-from httpx import AsyncClient
+from datetime import UTC, datetime
 from typing import AsyncGenerator
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import nest_asyncio
+import pytest
+from fastapi.testclient import TestClient
+from httpx import AsyncClient
+from openai import AsyncOpenAI
+from tortoise import Tortoise
 
 from context_manager.main import app as context_app
-from orchestrator.orchestrator import app as orchestrator_app
 from context_manager.models import ContextEntryDB
+from orchestrator.orchestrator import app as orchestrator_app
 
 
 @asynccontextmanager

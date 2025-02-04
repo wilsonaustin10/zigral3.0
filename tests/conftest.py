@@ -1,14 +1,16 @@
 """Test configuration and fixtures."""
-import os
-import pytest
 import asyncio
+import os
 from typing import AsyncGenerator
+
+import pytest
 from httpx import AsyncClient
 from tortoise import Tortoise
-from context_manager.main import app as context_app
-from orchestrator.orchestrator import app as orchestrator_app
+
 from context_manager.database import TORTOISE_ORM
+from context_manager.main import app as context_app
 from context_manager.models import ContextEntryDB
+from orchestrator.orchestrator import app as orchestrator_app
 
 
 @pytest.fixture(scope="session")

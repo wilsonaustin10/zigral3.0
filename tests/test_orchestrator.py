@@ -1,12 +1,14 @@
-import pytest
 import json
-from unittest.mock import patch, AsyncMock
-from fastapi.testclient import TestClient
-from openai import OpenAIError, APIStatusError
-import httpx
-from orchestrator.orchestrator import app
-from orchestrator.llm_integration import get_openai_client
 import time
+from unittest.mock import AsyncMock, patch
+
+import httpx
+import pytest
+from fastapi.testclient import TestClient
+from openai import APIStatusError, OpenAIError
+
+from orchestrator.llm_integration import get_openai_client
+from orchestrator.orchestrator import app
 
 
 @pytest.fixture

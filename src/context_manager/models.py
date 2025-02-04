@@ -26,9 +26,10 @@ Database Schema:
 - Timestamps: created_at, updated_at (auto-managed)
 """
 
-from pydantic import BaseModel, Field, field_validator, ConfigDict
-from typing import Dict, Optional
 from datetime import datetime
+from typing import Dict, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from tortoise import fields, models
 from tortoise.contrib.pydantic import pydantic_model_creator
 

@@ -1,8 +1,10 @@
 import os
+
 import uvicorn
 from dotenv import load_dotenv
-from orchestrator.orchestrator import app
+
 from orchestrator.logger import get_logger
+from orchestrator.orchestrator import app
 
 # Load environment variables
 load_dotenv()

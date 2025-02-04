@@ -1,7 +1,8 @@
 import os
-from typing import Dict, Any
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+from typing import Any, Dict
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):

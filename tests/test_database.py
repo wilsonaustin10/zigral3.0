@@ -1,6 +1,7 @@
 import pytest
 from tortoise import Tortoise
-from tortoise.exceptions import DBConnectionError, ConfigurationError, OperationalError
+from tortoise.exceptions import ConfigurationError, DBConnectionError, OperationalError
+
 from context_manager.database import close_db
 
 # Test database configuration
