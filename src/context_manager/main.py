@@ -108,6 +108,27 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 
+# Database connection lifecycle handlers
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Startup: Initializing database connection")
+    try:
+        await init_db(test_mode=False)
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
+        raise e
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Shutdown: Closing database connection")
+    try:
+        await close_db()
+    except Exception as e:
+        logger.error(f"Error during database shutdown: {e}")
+        raise e
+
+
 @app.post("/context", response_model=ContextEntryResponse)
 async def create_context_entry(context: ContextEntryCreate):
     """Create a new context entry"""
