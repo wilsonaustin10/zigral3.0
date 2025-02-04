@@ -52,7 +52,7 @@ jobs:
     - name: Validate environment
       run: |
         python -c "import sys; print(f'Python {sys.version}')"
-        python -c "import nest_asyncio; print(f'nest_asyncio {nest_asyncio.__version__}')"
+        python -c "import nest_asyncio"  # Just verify it can be imported
 
     - name: Run tests
       env:
