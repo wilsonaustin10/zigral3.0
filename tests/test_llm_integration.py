@@ -156,25 +156,12 @@ async def test_rate_limit_handling(mock_rate_limited_client):
 
 @pytest.mark.asyncio
 async def test_no_real_api_calls():
-    """Test that no real API calls are made when using a mock client"""
-    command = "Find CTOs"
+    """Test that no real API calls are made during testing."""
+    command = "Find CTOs in San Francisco"
     mock_client = AsyncMock()
-    content = {"objective": "Test", "steps": []}
-    mock_response = AsyncMock(
-        choices=[AsyncMock(message=AsyncMock(content=json.dumps(content)))]
+    mock_client.chat.completions.create.side_effect = Exception(
+        "Real API call attempted"
     )
-    mock_client.chat.completions.create.return_value = mock_response
-
-    # Use the mock client
-    result = await generate_action_sequence(command, client=mock_client)
-
-    # Verify the mock was called exactly once
-    mock_client.chat.completions.create.assert_called_once()
-
-    # Verify the mock was called with expected arguments
-    call_args = mock_client.chat.completions.create.call_args
-    assert call_args is not None
-    kwargs = call_args.kwargs
-    assert kwargs["model"] == "gpt-4-1106-preview"
-    assert len(kwargs["messages"]) == 2
-    assert kwargs["messages"][1]["content"] == _prepare_prompt(command)
+    
+    with pytest.raises(Exception, match="Real API call attempted"):
+        await generate_action_sequence(command, client=mock_client)

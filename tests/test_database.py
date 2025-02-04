@@ -1,7 +1,8 @@
+import logging
+
 import pytest
 from tortoise import Tortoise
 from tortoise.exceptions import ConfigurationError, DBConnectionError, OperationalError
-import logging
 
 from context_manager.database import close_db
 
@@ -19,6 +20,7 @@ TEST_TORTOISE_CONFIG = {
 }
 
 logger = logging.getLogger(__name__)
+
 
 async def init_test_db():
     """Initialize the test database with Tortoise ORM.

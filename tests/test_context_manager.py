@@ -1,3 +1,15 @@
+"""Tests for the Context Manager API."""
+
+import pytest
+from fastapi.testclient import TestClient
+
+from context_manager.main import app
+
+@pytest.fixture
+def client():
+    """Create a test client."""
+    return TestClient(app)
+
 import pytest
 from httpx import AsyncClient
 from tortoise import Tortoise

@@ -145,9 +145,8 @@ async def test_database():
 
 
 @pytest.fixture
-async def context_client(setup_database) -> AsyncGenerator[AsyncClient, None]:
+async def context_client() -> AsyncGenerator[AsyncClient, None]:
     """Get a test client for the context manager API."""
-    context_app.router.lifespan_context = app_lifespan
     async with AsyncClient(app=context_app, base_url="http://test") as client:
         yield client
 

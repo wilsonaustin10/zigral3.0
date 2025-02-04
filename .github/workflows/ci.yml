@@ -16,11 +16,11 @@ jobs:
     # Set up PostgreSQL service container
     services:
       postgres:
-        image: postgres:15-alpine
+        image: postgres:latest
         env:
-          POSTGRES_USER: zigral
-          POSTGRES_PASSWORD: zigral_password
-          POSTGRES_DB: zigral
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: zigral_test
         ports:
           - 5432:5432
         options: >-
@@ -35,7 +35,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.12'
         cache: 'pip'
 
     - name: Install Poetry
@@ -54,18 +54,22 @@ jobs:
         python -c "import sys; print(f'Python {sys.version}')"
         python -c "import nest_asyncio"  # Just verify it can be imported
 
+    - name: Run linting
+      run: |
+        poetry run black . --check
+        poetry run isort . --check-only --diff
+        poetry run flake8
+
     - name: Run tests
       env:
-        DATABASE_URL: postgresql://zigral:zigral_password@localhost:5432/zigral
-        OPENAI_API_KEY: test_key
-        DEBUG: "True"
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/zigral_test
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       run: |
         poetry run pytest tests/ -v --cov=src --cov-report=xml
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         file: ./coverage.xml
