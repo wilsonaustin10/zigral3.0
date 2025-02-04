@@ -5,12 +5,33 @@ production and test environments. It uses Tortoise ORM with support for both
 PostgreSQL (production) and SQLite (testing/development).
 
 Key components:
-- TORTOISE_ORM: Production configuration for PostgreSQL
-- TEST_TORTOISE_CONFIG: Test configuration using SQLite
-- TORTOISE_CONFIG: Development configuration using SQLite file database
+- TORTOISE_ORM: Production configuration for PostgreSQL using asyncpg
+- TEST_TORTOISE_CONFIG: Test configuration using SQLite with connection string format
+- TORTOISE_CONFIG: Development configuration using SQLite with connection string format
+
+Connection String Format:
+- PostgreSQL: "asyncpg://user:password@host:port/database"
+- SQLite: "sqlite:///path/to/database.sqlite3"
 
 The module ensures proper database initialization, connection management,
-and cleanup across different environments.
+and cleanup across different environments. It handles:
+1. Connection initialization and cleanup
+2. Schema generation
+3. Test database isolation
+4. Connection state management
+5. Error handling and logging
+
+Usage:
+    ```python
+    # Initialize database (production)
+    await init_db()
+    
+    # Initialize database (testing)
+    await init_db(test_mode=True)
+    
+    # Close database connections
+    await close_db()
+    ```
 """
 import logging
 import os
@@ -47,7 +68,7 @@ TORTOISE_ORM = {
     },
     "apps": {
         "models": {
-            "models": ["context_manager.models"],
+            "models": ["src.context_manager.models"],
             "default_connection": "default",
         }
     },
@@ -55,38 +76,28 @@ TORTOISE_ORM = {
     "timezone": "UTC",
 }
 
-# Test configuration using SQLite in-memory database
+# Test configuration using SQLite with connection string
 TEST_TORTOISE_CONFIG = {
     "connections": {
-        "default": {
-            "engine": "tortoise.backends.sqlite",
-            "credentials": {
-                "file_path": str(Path(TEMP_DIR) / "test.sqlite3")
-            }
-        }
+        "default": f"sqlite:///{Path(TEMP_DIR) / 'test.sqlite3'}"
     },
     "apps": {
         "models": {
-            "models": ["context_manager.models"],
+            "models": ["src.context_manager.models"],
             "default_connection": "default",
         }
     }
 }
 
-# Production configuration using SQLite file database
+# Production configuration using SQLite file database with connection string
 db_file = Path(TEMP_DIR) / "db.sqlite3"
 TORTOISE_CONFIG = {
     "connections": {
-        "default": {
-            "engine": "tortoise.backends.sqlite",
-            "credentials": {
-                "file_path": str(db_file)
-            }
-        }
+        "default": f"sqlite:///{db_file}"
     },
     "apps": {
         "models": {
-            "models": ["context_manager.models"],
+            "models": ["src.context_manager.models"],
             "default_connection": "default",
         }
     }
@@ -115,17 +126,18 @@ async def init_db(test_mode: bool = False) -> None:
         # Initialize with appropriate config
         config = TEST_TORTOISE_CONFIG if test_mode else TORTOISE_CONFIG
         
-        # If using file database, ensure directory exists
+        # If using file database in production mode, ensure directory exists
         if not test_mode:
-            db_path = Path(config["connections"]["default"]["credentials"]["file_path"])
+            db_path = Path(config["connections"]["default"]) if isinstance(config["connections"]["default"], str) else Path(config["connections"]["default"]["credentials"]["file_path"])
             os.makedirs(db_path.parent, exist_ok=True)
-        
+
         await Tortoise.init(config=config)
         await Tortoise.generate_schemas()
         logger.info("Database initialized successfully")
+        logger.info(f"Tortoise connections: {Tortoise._connections}")
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}")
-        raise
+        raise Exception(f"Database initialization failed: {str(e)}") from e
 
 async def close_db() -> None:
     """Close all active database connections.
