@@ -37,24 +37,27 @@ Below is a detailed plan for Phase 2 along with an "order of file creation" brea
 
 #### Step 2: Build the Lincoln (LinkedIn Agent)
 
-3. **Create Files for Lincoln:**
-   - **`src/agents/lincoln/__init__.py`:**  
+3. **Create Files for Lincoln:** ✅
+   - **`src/agents/lincoln/__init__.py`:** ✅
      An empty file to mark the package.
      
-   - **`src/agents/lincoln/main.py`:**  
+   - **`src/agents/lincoln/main.py`:** ✅
      This will be the entry point for the Lincoln agent. It should initialize the agent, set up its API endpoints (if it exposes any for inter-service communication), and start the event loop.
      
-   - **`src/agents/lincoln/linkedin_client.py`:**  
+   - **`src/agents/lincoln/linkedin_client.py`:** ✅
      Implement the core Playwright-based functions for logging into LinkedIn, performing a search, and capturing data.  
-     - *Example functions:* `login()`, `search_ctos()`, and `capture_gui_state()`.
+     - *Example functions:* `login()` ✅, `search_sales_navigator()` ✅, and `capture_gui_state()` ⏳
      
-   - **`src/agents/lincoln/utils.py`:**  
+   - **`src/agents/lincoln/utils.py`:** ✅
      Helper functions that format or process data (e.g., converting HTML snapshots into structured data).
 
-4. **Implement Basic Functionality in Lincoln:**
-   - Write a basic script in `linkedin_client.py` that simulates a login and search sequence.
-   - Ensure that you include error handling (e.g., catching exceptions if elements are not found) and logging so that errors are reported back to the orchestrator.
-   - Use test stubs to simulate data capture if the live API is not available.
+4. **Implement Basic Functionality in Lincoln:** ⚠️ (Partially Complete)
+   - Write a basic script in `linkedin_client.py` that simulates a login and search sequence ✅
+   - Ensure that you include error handling (e.g., catching exceptions if elements are not found) and logging so that errors are reported back to the orchestrator ✅
+   - Use test stubs to simulate data capture if the live API is not available ✅
+   - Implement actual Sales Navigator search functionality ✅
+   - Implement GUI state capture ⏳
+   - Implement profile data collection ⏳
 
 #### Step 3: Build the Shaun (Google Sheets Agent)
 
