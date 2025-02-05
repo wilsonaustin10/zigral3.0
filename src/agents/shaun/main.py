@@ -5,20 +5,22 @@ This module initializes the FastAPI application for the Google Sheets agent and 
 endpoints for managing prospect data in Google Sheets.
 """
 
+from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from common.messaging import RabbitMQClient
 from .sheets_client import GoogleSheetsClient
 from .utils import setup_logger
 
-# Initialize FastAPI app
-app = FastAPI(title="Shaun - Google Sheets Agent")
+# Initialize logger
 logger = setup_logger("shaun.main")
 
-# Initialize Google Sheets client (None until configured)
+# Initialize clients (None until configured)
 sheets_client: Optional[GoogleSheetsClient] = None
+rabbitmq_client: Optional[RabbitMQClient] = None
 
 
 class ProspectData(BaseModel):
@@ -36,6 +38,86 @@ class CommandRequest(BaseModel):
     """Model for incoming command requests."""
     action: str
     parameters: Dict
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Handle startup and shutdown events.
+    
+    This replaces the deprecated @app.on_event decorators.
+    """
+    # Initialize clients on startup
+    global sheets_client, rabbitmq_client
+    try:
+        # Initialize Google Sheets client
+        sheets_client = GoogleSheetsClient()
+        await sheets_client.initialize()
+        logger.info("Google Sheets client initialized successfully")
+
+        # Initialize RabbitMQ client
+        rabbitmq_client = RabbitMQClient("shaun")
+        await rabbitmq_client.initialize()
+        await rabbitmq_client.subscribe(
+            "shaun_commands",
+            handle_rabbitmq_command
+        )
+        logger.info("RabbitMQ client initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize clients: {str(e)}")
+        raise
+    
+    yield
+    
+    # Cleanup on shutdown
+    if sheets_client:
+        await sheets_client.cleanup()
+        logger.info("Google Sheets client cleaned up successfully")
+    if rabbitmq_client:
+        await rabbitmq_client.cleanup()
+        logger.info("RabbitMQ client cleaned up successfully")
+
+
+# Initialize FastAPI app with lifespan manager
+app = FastAPI(title="Shaun - Google Sheets Agent", lifespan=lifespan)
+
+
+async def handle_rabbitmq_command(message):
+    """
+    Handle commands received via RabbitMQ.
+    
+    Args:
+        message: RabbitMQ message containing the command
+    """
+    if not sheets_client or not rabbitmq_client:
+        raise RuntimeError("Clients not initialized")
+
+    try:
+        # Execute command
+        result = await sheets_client.execute_command(message.action, message.parameters)
+        
+        # Send response
+        await rabbitmq_client.publish_message(
+            {
+                "status": "success",
+                "result": result,
+                "service": "shaun"
+            },
+            routing_key="shaun_responses",
+            correlation_id=message.correlation_id
+        )
+    except Exception as e:
+        logger.error(f"Error handling RabbitMQ command: {str(e)}")
+        # Send error response
+        await rabbitmq_client.publish_message(
+            {
+                "status": "error",
+                "error": str(e),
+                "service": "shaun"
+            },
+            routing_key="shaun_responses",
+            correlation_id=message.correlation_id
+        )
 
 
 @app.post("/command")
@@ -99,26 +181,6 @@ async def health_check():
         "status": "healthy",
         "service": "shaun",
         "version": "1.0.0",
-        "client_initialized": sheets_client is not None
-    }
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the Google Sheets client on application startup."""
-    global sheets_client
-    try:
-        sheets_client = GoogleSheetsClient()
-        await sheets_client.initialize()
-        logger.info("Google Sheets client initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize Google Sheets client: {str(e)}")
-        raise
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Clean up resources on application shutdown."""
-    if sheets_client:
-        await sheets_client.cleanup()
-        logger.info("Google Sheets client cleaned up successfully") 
+        "client_initialized": sheets_client is not None,
+        "rabbitmq_connected": rabbitmq_client is not None and rabbitmq_client.connection is not None
+    } 

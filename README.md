@@ -28,21 +28,31 @@ zigral/
 
 ## Development Setup
 
-1. Install dependencies:
-   ```bash
-   poetry install
-   ```
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/zigral3.0.git
+cd zigral3.0
+```
 
-2. Set up environment variables:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
+2. Install dependencies:
+```bash
+poetry install
+```
 
-3. Run tests:
-   ```bash
-   poetry run pytest tests/ -v --cov=src --cov-report=xml
-   ```
+3. Set up environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
+
+4. Set up Google Sheets credentials:
+   - Place your service account credentials in `~/.config/gspread/credentials.json`
+   - For testing, a mock credentials file is provided in `tests/agents/shaun/test_creds.json`
+
+5. Run tests:
+```bash
+poetry run pytest tests/
+```
 
 ## Code Quality Tools
 

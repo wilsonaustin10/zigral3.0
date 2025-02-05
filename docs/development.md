@@ -233,3 +233,45 @@ The project uses GitHub Actions for continuous integration:
    - pytest -vv for verbose output
    - pytest --pdb for debugger on failure
    - PYTHONPATH for import issues 
+
+## Agent Development
+
+### Shaun (Google Sheets Agent)
+
+The Shaun agent is responsible for managing prospect data in Google Sheets. It provides functionality for:
+- Connecting to Google Sheets using service account credentials
+- Adding new prospects to sheets
+- Updating existing prospect information
+- Validating and formatting prospect data
+
+#### Testing the Shaun Agent
+
+1. **Mock Credentials**:
+   - A mock credentials file is provided at `tests/agents/shaun/test_creds.json`
+   - Tests use this file to simulate Google Sheets authentication
+
+2. **Test Structure**:
+   ```
+   tests/agents/shaun/
+   ├── test_sheets_client.py  # Tests for Google Sheets client
+   ├── test_utils.py         # Tests for utility functions
+   └── test_creds.json      # Mock credentials for testing
+   ```
+
+3. **Running Shaun Tests**:
+   ```bash
+   poetry run pytest tests/agents/shaun/ -v
+   ```
+
+4. **Test Coverage**:
+   - Core functionality: ~77% coverage
+   - Key areas tested:
+     - Client initialization
+     - Sheet connection
+     - Prospect data management
+     - Error handling
+
+5. **Adding New Tests**:
+   - Use the provided fixtures: `mock_credentials`, `mock_gspread`, etc.
+   - Follow the existing pattern for mocking Google Sheets operations
+   - Ensure proper cleanup in test functions 
