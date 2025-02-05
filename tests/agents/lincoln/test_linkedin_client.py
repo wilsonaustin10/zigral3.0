@@ -37,6 +37,8 @@ import os
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from playwright.async_api import Page, Browser
+import shutil
+from pathlib import Path
 
 from src.agents.lincoln.linkedin_client import LinkedInClient
 
@@ -71,6 +73,16 @@ async def client(mock_browser, mock_page):
         client = LinkedInClient()
         await client.initialize()
         return client
+
+
+@pytest.fixture(autouse=True)
+def cleanup_captures():
+    """Clean up capture directories before and after tests."""
+    # Clean up before test
+    shutil.rmtree("captures", ignore_errors=True)
+    yield
+    # Clean up after test
+    shutil.rmtree("captures", ignore_errors=True)
 
 
 @pytest.mark.asyncio
@@ -239,4 +251,71 @@ async def test_search_sales_navigator_extraction_error(client, mock_page):
     results = await client.search_sales_navigator(search_criteria)
     
     # Verify empty results due to extraction error
-    assert len(results) == 0 
+    assert len(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_capture_gui_state(client, mock_page):
+    """Test GUI state capture functionality."""
+    # Mock page content and screenshot
+    mock_page.content = AsyncMock(return_value="<html><body>Test content</body></html>")
+    mock_page.screenshot = AsyncMock()  # Mock the screenshot method
+    
+    # Capture state
+    result = await client.capture_gui_state("test_capture")
+    
+    # Verify paths in result
+    assert "screenshot" in result
+    assert "html" in result
+    assert result["screenshot"].endswith(".png")
+    assert result["html"].endswith(".html")
+    
+    # Verify screenshot was called
+    mock_page.screenshot.assert_called_once()
+    assert mock_page.screenshot.call_args[1]["full_page"] is True
+    
+    # Verify content was captured
+    html_path = Path(result["html"])
+    assert html_path.exists()
+    assert html_path.read_text() == "<html><body>Test content</body></html>"
+
+
+@pytest.mark.asyncio
+async def test_capture_gui_state_no_page(client):
+    """Test GUI state capture with no initialized page."""
+    client._page = None
+    with pytest.raises(RuntimeError, match="Page not initialized"):
+        await client.capture_gui_state()
+
+
+@pytest.mark.asyncio
+async def test_capture_gui_state_screenshot_error(client, mock_page):
+    """Test GUI state capture with screenshot error."""
+    mock_page.screenshot = AsyncMock(side_effect=Exception("Screenshot failed"))
+    mock_page.content = AsyncMock(return_value="<html><body>Test content</body></html>")
+    
+    with pytest.raises(Exception, match="Screenshot failed"):
+        await client.capture_gui_state()
+
+
+@pytest.mark.asyncio
+async def test_execute_command_capture_state(client, mock_page):
+    """Test executing capture_state command."""
+    # Set up environment variables for login
+    os.environ["LINKEDIN_USERNAME"] = "test@example.com"
+    os.environ["LINKEDIN_PASSWORD"] = "password123"
+    
+    # Mock page content
+    mock_page.content = AsyncMock(return_value="<html><body>Test content</body></html>")
+    
+    # Execute command
+    result = await client.execute_command("capture_state", {"name": "test_capture"})
+    
+    # Verify result
+    assert "gui_state" in result
+    assert "screenshot" in result["gui_state"]
+    assert "html" in result["gui_state"]
+    
+    # Clean up environment
+    os.environ.pop("LINKEDIN_USERNAME")
+    os.environ.pop("LINKEDIN_PASSWORD") 

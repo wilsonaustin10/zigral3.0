@@ -8,7 +8,7 @@ Below is a detailed plan for Phase 2 along with an "order of file creation" brea
 
 ### Objectives
 - **Implement Lincoln:**  
-  Develop the LinkedIn Agent using Playwright to automate LinkedIn tasks (login, search, and data capture). Ensure it captures the GUI state (screenshots/HTML) and sends data (e.g., prospect information) to the next stage.
+  Develop the LinkedIn Agent using Playwright to automate LinkedIn tasks (login, search, and data capture). Ensure it captures the GUI state (screenshots/HTML) ✅ and sends data (e.g., prospect information) to the next stage.
   
 - **Implement Shaun:**  
   Develop the Google Sheets Agent using gspread to update a prospect list. Shaun should receive data (from Lincoln) and update the target spreadsheet accordingly.
@@ -46,7 +46,7 @@ Below is a detailed plan for Phase 2 along with an "order of file creation" brea
      
    - **`src/agents/lincoln/linkedin_client.py`:** ✅
      Implement the core Playwright-based functions for logging into LinkedIn, performing a search, and capturing data.  
-     - *Example functions:* `login()` ✅, `search_sales_navigator()` ✅, and `capture_gui_state()` ⏳
+     - *Example functions:* `login()` ✅, `search_sales_navigator()` ✅, and `capture_gui_state()` ✅
      
    - **`src/agents/lincoln/utils.py`:** ✅
      Helper functions that format or process data (e.g., converting HTML snapshots into structured data).
@@ -56,7 +56,7 @@ Below is a detailed plan for Phase 2 along with an "order of file creation" brea
    - Ensure that you include error handling (e.g., catching exceptions if elements are not found) and logging so that errors are reported back to the orchestrator ✅
    - Use test stubs to simulate data capture if the live API is not available ✅
    - Implement actual Sales Navigator search functionality ✅
-   - Implement GUI state capture ⏳
+   - Implement GUI state capture ✅
    - Implement profile data collection ⏳
 
 #### Step 3: Build the Shaun (Google Sheets Agent)

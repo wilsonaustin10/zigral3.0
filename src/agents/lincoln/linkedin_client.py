@@ -9,6 +9,7 @@ Key Features:
 - Automated LinkedIn login with environment-based credentials
 - Sales Navigator search with multiple criteria support
 - Prospect data collection and extraction
+- GUI state capture (screenshots and HTML)
 - Error handling and logging
 - Browser session management
 
@@ -31,6 +32,9 @@ Example:
         "industry": "Technology"
     })
     
+    # Capture GUI state
+    state = await client.capture_gui_state()
+    
     # Clean up
     await client.cleanup()
     ```
@@ -43,8 +47,9 @@ Note:
 import asyncio
 import os
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime
+from pathlib import Path
 
 from playwright.async_api import async_playwright, Browser, Page
 
@@ -76,6 +81,7 @@ class LinkedInClient:
         search_sales_navigator(): Search for prospects
         collect_prospect_data(): Extract data from profiles
         execute_command(): Execute various LinkedIn automation commands
+        capture_gui_state(): Capture current page state (screenshot and HTML)
     """
 
     def __init__(self):
@@ -86,6 +92,8 @@ class LinkedInClient:
         self.base_url = "https://www.linkedin.com"
         self.sales_nav_url = "https://www.linkedin.com/sales"
         self.logger = logger
+        self._screenshots_dir = Path("captures/screenshots")
+        self._html_dir = Path("captures/html")
 
     async def initialize(self):
         """Initialize the browser and create a new page."""
@@ -267,12 +275,61 @@ class LinkedInClient:
             logger.error(f"Data collection failed: {str(e)}")
             raise
 
+    async def capture_gui_state(self, name: Optional[str] = None) -> Dict[str, str]:
+        """
+        Capture the current state of the GUI (screenshot and HTML).
+        
+        Args:
+            name: Optional name for the capture files. If not provided,
+                 a timestamp will be used.
+                 
+        Returns:
+            Dictionary containing paths to the captured files:
+            {
+                "screenshot": str,  # Path to screenshot file
+                "html": str        # Path to HTML file
+            }
+            
+        Raises:
+            RuntimeError: If page is not initialized
+        """
+        if not self._page:
+            raise RuntimeError("Page not initialized")
+            
+        try:
+            # Create capture directories if they don't exist
+            self._screenshots_dir.mkdir(parents=True, exist_ok=True)
+            self._html_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate filename based on name or timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{name}_{timestamp}" if name else timestamp
+            
+            # Capture screenshot
+            screenshot_path = self._screenshots_dir / f"{filename}.png"
+            await self._page.screenshot(path=str(screenshot_path), full_page=True)
+            
+            # Capture HTML
+            html_path = self._html_dir / f"{filename}.html"
+            html_content = await self._page.content()
+            html_path.write_text(html_content, encoding='utf-8')
+            
+            self.logger.info(f"GUI state captured: {filename}")
+            return {
+                "screenshot": str(screenshot_path),
+                "html": str(html_path)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to capture GUI state: {str(e)}")
+            raise
+
     async def execute_command(self, action: str, parameters: Dict) -> Dict:
         """
         Execute a LinkedIn automation command.
         
         Args:
-            action: The action to perform (e.g., "search", "collect_data").
+            action: The action to perform (e.g., "search", "collect_data", "capture_state").
             parameters: Parameters for the action.
             
         Returns:
@@ -292,9 +349,12 @@ class LinkedInClient:
             elif action == "collect_data":
                 data = await self.collect_prospect_data(parameters["profile_url"])
                 return {"prospect_data": data}
+            elif action == "capture_state":
+                state = await self.capture_gui_state(parameters.get("name"))
+                return {"gui_state": state}
             else:
                 raise ValueError(f"Unknown action: {action}")
                 
         except Exception as e:
-            logger.error(f"Command execution failed: {str(e)}")
+            self.logger.error(f"Command execution failed: {str(e)}")
             raise 
