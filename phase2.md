@@ -65,7 +65,7 @@ Below is a detailed plan for Phase 2 along with an "order of file creation" brea
    - **`src/agents/shaun/__init__.py`:** ✅
      An empty file to mark the package.
      
-   - **`src/agents/shaun/main.py`:**  
+   - **`src/agents/shaun/main.py`:** ✅
      The entry point for the Shaun agent. This file will initialize the agent and expose any endpoints or functions required for updating spreadsheets.
      
    - **`src/agents/shaun/sheets_client.py`:**  
