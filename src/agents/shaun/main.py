@@ -92,6 +92,17 @@ async def add_prospects(prospects: List[ProspectData]):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "service": "shaun",
+        "version": "1.0.0",
+        "client_initialized": sheets_client is not None
+    }
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize the Google Sheets client on application startup."""
