@@ -71,6 +71,7 @@ Lifecycle Management:
 
 from contextlib import asynccontextmanager
 from typing import List, Optional
+import os
 
 from fastapi import FastAPI, HTTPException, Query
 
@@ -90,8 +91,11 @@ from .models import ContextEntryCreate, ContextEntryResponse
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for database initialization and cleanup"""
-    # Initialize database on startup
-    await init_db()
+    # Initialize database on startup, using test mode if TESTING env var is set
+    if os.getenv("TESTING", "false").lower() == "true":
+        await init_db(test_mode=True)
+    else:
+        await init_db(test_mode=False)
     yield
     # Close database on shutdown
     await close_db()
@@ -106,27 +110,6 @@ app = FastAPI(
 )
 logger = get_logger(__name__)
 settings = get_settings()
-
-
-# Database connection lifecycle handlers
-
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Startup: Initializing database connection")
-    try:
-        await init_db(test_mode=False)
-    except Exception as e:
-        logger.error(f"Database initialization failed: {e}")
-        raise e
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("Shutdown: Closing database connection")
-    try:
-        await close_db()
-    except Exception as e:
-        logger.error(f"Error during database shutdown: {e}")
-        raise e
 
 
 @app.post("/context", response_model=ContextEntryResponse)

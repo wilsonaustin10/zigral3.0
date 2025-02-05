@@ -51,18 +51,18 @@ Below is a detailed plan for Phase 2 along with an "order of file creation" brea
    - **`src/agents/lincoln/utils.py`:** ✅
      Helper functions that format or process data (e.g., converting HTML snapshots into structured data).
 
-4. **Implement Basic Functionality in Lincoln:** ⚠️ (Partially Complete)
+4. **Implement Basic Functionality in Lincoln:** ✅
    - Write a basic script in `linkedin_client.py` that simulates a login and search sequence ✅
    - Ensure that you include error handling (e.g., catching exceptions if elements are not found) and logging so that errors are reported back to the orchestrator ✅
    - Use test stubs to simulate data capture if the live API is not available ✅
    - Implement actual Sales Navigator search functionality ✅
    - Implement GUI state capture ✅
-   - Implement profile data collection ⏳
+   - Implement profile data collection ✅
 
 #### Step 3: Build the Shaun (Google Sheets Agent)
 
 5. **Create Files for Shaun:**
-   - **`src/agents/shaun/__init__.py`:**  
+   - **`src/agents/shaun/__init__.py`:** ✅
      An empty file to mark the package.
      
    - **`src/agents/shaun/main.py`:**  

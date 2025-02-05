@@ -318,4 +318,99 @@ async def test_execute_command_capture_state(client, mock_page):
     
     # Clean up environment
     os.environ.pop("LINKEDIN_USERNAME")
-    os.environ.pop("LINKEDIN_PASSWORD") 
+    os.environ.pop("LINKEDIN_PASSWORD")
+
+
+@pytest.mark.asyncio
+async def test_collect_prospect_data_success(client, mock_page):
+    """Test successful profile data collection."""
+    # Set up test data
+    client._logged_in = True
+    profile_url = "https://www.linkedin.com/in/johndoe"
+    
+    # Mock page interactions
+    mock_page.wait_for_selector = AsyncMock()
+    mock_page.query_selector = AsyncMock(return_value=AsyncMock(
+        inner_text=AsyncMock(return_value="Test Value")
+    ))
+    mock_page.query_selector_all = AsyncMock(return_value=[
+        AsyncMock(**{
+            "query_selector": AsyncMock(return_value=AsyncMock(
+                inner_text=AsyncMock(return_value="Test Item")
+            )),
+            "inner_text": AsyncMock(return_value="Test Skill")
+        })
+    ])
+    
+    # Execute data collection
+    data = await client.collect_prospect_data(profile_url)
+    
+    # Verify data structure
+    assert isinstance(data, dict)
+    assert "name" in data
+    assert "title" in data
+    assert "company" in data
+    assert "location" in data
+    assert "about" in data
+    assert "experience" in data
+    assert "education" in data
+    assert "skills" in data
+    assert "profile_url" in data
+    assert "timestamp" in data
+    
+    # Verify experience structure
+    assert len(data["experience"]) > 0
+    exp = data["experience"][0]
+    assert "title" in exp
+    assert "company" in exp
+    assert "duration" in exp
+    assert "description" in exp
+    
+    # Verify education structure
+    assert len(data["education"]) > 0
+    edu = data["education"][0]
+    assert "school" in edu
+    assert "degree" in edu
+    assert "field" in edu
+    assert "years" in edu
+    
+    # Verify skills
+    assert len(data["skills"]) > 0
+    
+    # Verify page interactions
+    mock_page.goto.assert_called_with(profile_url)
+    mock_page.wait_for_selector.assert_called_with('.profile-section', timeout=10000)
+
+
+@pytest.mark.asyncio
+async def test_collect_prospect_data_invalid_url(client):
+    """Test data collection with invalid profile URL."""
+    client._logged_in = True
+    with pytest.raises(ValueError, match="Invalid LinkedIn profile URL"):
+        await client.collect_prospect_data("invalid-url.com")
+
+
+@pytest.mark.asyncio
+async def test_collect_prospect_data_page_load_error(client, mock_page):
+    """Test handling of page load errors during data collection."""
+    client._logged_in = True
+    profile_url = "https://www.linkedin.com/in/johndoe"
+    
+    # Mock page load error
+    mock_page.goto.side_effect = Exception("Failed to load page")
+    
+    with pytest.raises(Exception, match="Failed to load page"):
+        await client.collect_prospect_data(profile_url)
+
+
+@pytest.mark.asyncio
+async def test_collect_prospect_data_extraction_error(client, mock_page):
+    """Test handling of data extraction errors."""
+    client._logged_in = True
+    profile_url = "https://www.linkedin.com/in/johndoe"
+    
+    # Mock successful navigation but failed data extraction
+    mock_page.wait_for_selector = AsyncMock(side_effect=Exception("Element not found"))
+    
+    with pytest.raises(Exception, match="Element not found"):
+        await client.collect_prospect_data(profile_url) 

@@ -4,15 +4,15 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: zigral
-      POSTGRES_PASSWORD: zigral_password
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
       POSTGRES_DB: zigral
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U zigral"]
+      test: ["CMD-SHELL", "pg_isready -U user"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -23,7 +23,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - SERVICE_NAME=orchestrator
-      - DATABASE_URL=postgresql://zigral:zigral_password@postgres:5432/zigral
+      - DATABASE_URL=postgresql://user:password@postgres:5432/zigral
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - DEBUG=True
       - LOG_LEVEL=DEBUG
@@ -42,7 +42,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - SERVICE_NAME=context-manager
-      - DATABASE_URL=postgresql://zigral:zigral_password@postgres:5432/zigral
+      - DATABASE_URL=postgresql://user:password@postgres:5432/zigral
       - DEBUG=True
       - LOG_LEVEL=DEBUG
     ports:

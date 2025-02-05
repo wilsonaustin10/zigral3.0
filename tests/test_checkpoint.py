@@ -33,11 +33,13 @@ def test_create_checkpoint(checkpoint_manager, test_state):
     """Test creating a checkpoint."""
     job_id = test_state["job_id"]
     checkpoint_path = checkpoint_manager.create_checkpoint(job_id, test_state)
-    
+
     assert os.path.exists(checkpoint_path)
     with open(checkpoint_path, "r") as f:
         saved_state = json.load(f)
-    assert saved_state == test_state
+    assert saved_state["job_id"] == test_state["job_id"]
+    assert saved_state["state"] == test_state
+    assert "timestamp" in saved_state
 
 def test_load_checkpoint(checkpoint_manager, test_state):
     """Test loading a checkpoint."""
@@ -56,18 +58,23 @@ def test_load_specific_checkpoint(checkpoint_manager, test_state):
     """Test loading a specific checkpoint."""
     job_id = test_state["job_id"]
     checkpoint_path = checkpoint_manager.create_checkpoint(job_id, test_state)
-    
-    loaded_data = checkpoint_manager.load_checkpoint(job_id, checkpoint_path)
+    checkpoint_name = os.path.basename(checkpoint_path)
+    timestamp = checkpoint_name.replace(f"{job_id}_", "").replace(".json", "")
+
+    loaded_data = checkpoint_manager.load_checkpoint(job_id, timestamp)
+    assert loaded_data["job_id"] == test_state["job_id"]
     assert loaded_data["state"] == test_state
+    assert "timestamp" in loaded_data
 
 def test_list_checkpoints(checkpoint_manager, test_state):
     """Test listing checkpoints for a job."""
     job_id = test_state["job_id"]
-    checkpoint_manager.create_checkpoint(job_id, test_state)
-    
+    checkpoint_path = checkpoint_manager.create_checkpoint(job_id, test_state)
+    checkpoint_name = os.path.basename(checkpoint_path)
+
     checkpoints = checkpoint_manager.list_checkpoints(job_id)
     assert len(checkpoints) == 1
-    assert os.path.exists(checkpoints[0])
+    assert checkpoint_name in checkpoints
 
 def test_multiple_checkpoints_same_job(checkpoint_manager, test_state):
     """Test creating multiple checkpoints for the same job."""

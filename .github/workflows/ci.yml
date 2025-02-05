@@ -18,9 +18,9 @@ jobs:
       postgres:
         image: postgres:latest
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: zigral_test
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: zigral
         ports:
           - 5432:5432
         options: >-
@@ -62,9 +62,8 @@ jobs:
 
     - name: Run tests
       env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/zigral_test
+        DATABASE_URL: postgresql://user:password@localhost:5432/zigral
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       run: |
         poetry run pytest tests/ -v --cov=src --cov-report=xml
 

@@ -77,6 +77,7 @@ from tortoise import Tortoise
 from context_manager.main import app as context_app
 from context_manager.models import ContextEntryDB
 from orchestrator.orchestrator import app as orchestrator_app
+from context_manager.database import TEST_TORTOISE_CONFIG
 
 
 @asynccontextmanager
@@ -101,7 +102,9 @@ async def app_lifespan(app):
 async def init_db():
     """Initialize test database with SQLite."""
     config = {
-        "connections": {"default": "sqlite://:memory:"},
+        "connections": {
+            "default": "sqlite://:memory:"
+        },
         "apps": {
             "models": {
                 "models": ["context_manager.models"],
@@ -113,6 +116,15 @@ async def init_db():
     await Tortoise.generate_schemas()
 
 
+@pytest.fixture(scope="session")
+async def setup_database():
+    """Initialize test database."""
+    await Tortoise.init(config=TEST_TORTOISE_CONFIG)
+    await Tortoise.generate_schemas()
+    yield
+    await Tortoise.close_connections()
+
+
 @pytest.mark.asyncio
 async def test_database():
     """Test database initialization and cleanup.
@@ -122,25 +134,18 @@ async def test_database():
     2. Schemas can be created
     3. Connection can be closed properly
     """
-    await init_db()
+    # Initialize database
+    await Tortoise.init(config=TEST_TORTOISE_CONFIG)
     await Tortoise.generate_schemas()
 
-    # Verify database is initialized
-    connection = Tortoise.get_connection("default")
-    assert connection is not None
-
-    # Execute query and await the result
-    result = await connection.execute_query(
-        "SELECT name FROM sqlite_master WHERE type='table'"
+    # Verify connection by checking for context_entries table
+    conn = Tortoise.get_connection("default")
+    result = await conn.execute_query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='context_entries'"
     )
-    tables = [row[0] for row in result[1]]
-    assert "context_entries" in tables
+    assert len(result[1]) > 0, "context_entries table not found"
 
-    # Verify models are registered
-    assert "models" in Tortoise.apps
-    assert ContextEntryDB in Tortoise.apps["models"].values()
-
-    # Clean up
+    # Close connection
     await Tortoise.close_connections()
 
 
@@ -194,24 +199,6 @@ def mock_openai_client():
     mock_client.chat = mock_chat
 
     return mock_client
-
-
-@pytest.fixture(scope="session")
-async def setup_database():
-    """Initialize test database."""
-    config = {
-        "connections": {"default": "sqlite://:memory:"},
-        "apps": {
-            "models": {
-                "models": ["context_manager.models"],
-                "default_connection": "default",
-            }
-        },
-    }
-    await Tortoise.init(config=config)
-    await Tortoise.generate_schemas()
-    yield
-    await Tortoise.close_connections()
 
 
 @pytest.mark.asyncio

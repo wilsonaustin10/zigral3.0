@@ -47,13 +47,13 @@ Note:
 import asyncio
 import os
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 from pathlib import Path
 
 from playwright.async_api import async_playwright, Browser, Page
 
-from .utils import setup_logger, sanitize_search_criteria, format_prospect_data
+from .utils import setup_logger, sanitize_search_criteria, format_prospect_data, validate_linkedin_url
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -258,22 +258,115 @@ class LinkedInClient:
             profile_url: URL of the prospect's LinkedIn profile.
             
         Returns:
-            Dictionary containing the prospect's information.
+            Dictionary containing the prospect's information including:
+            - name: Full name
+            - title: Current job title
+            - company: Current company
+            - location: Location
+            - about: About section text
+            - experience: List of work experiences
+            - education: List of education entries
+            - skills: List of skills
+            - timestamp: When the data was collected
+            
+        Raises:
+            RuntimeError: If not logged in or page fails to load
+            ValueError: If profile URL is invalid
         """
         if not self._logged_in:
             raise RuntimeError("Must be logged in to collect data")
             
+        # Validate profile URL
+        valid_url = validate_linkedin_url(profile_url)
+        if not valid_url:
+            raise ValueError("Invalid LinkedIn profile URL")
+            
         try:
-            await self._page.goto(profile_url)
+            # Navigate to profile
+            await self._page.goto(valid_url)
             await self._page.wait_for_load_state("networkidle")
             
-            # TODO: Implement actual data collection logic
-            # This is a placeholder that will be implemented based on specific requirements
-            return {}
+            # Wait for main profile section
+            await self._page.wait_for_selector('.profile-section', timeout=10000)
+            
+            # Extract basic information
+            name = await self._get_text('.profile-name')
+            title = await self._get_text('.profile-title')
+            company = await self._get_text('.profile-company')
+            location = await self._get_text('.profile-location')
+            about = await self._get_text('.profile-about')
+            
+            # Extract experience
+            experience = []
+            exp_items = await self._page.query_selector_all('.experience-item')
+            for item in exp_items:
+                exp = {
+                    "title": await self._get_element_text(item, '.experience-title'),
+                    "company": await self._get_element_text(item, '.experience-company'),
+                    "duration": await self._get_element_text(item, '.experience-duration'),
+                    "description": await self._get_element_text(item, '.experience-description')
+                }
+                experience.append(exp)
+            
+            # Extract education
+            education = []
+            edu_items = await self._page.query_selector_all('.education-item')
+            for item in edu_items:
+                edu = {
+                    "school": await self._get_element_text(item, '.education-school'),
+                    "degree": await self._get_element_text(item, '.education-degree'),
+                    "field": await self._get_element_text(item, '.education-field'),
+                    "years": await self._get_element_text(item, '.education-years')
+                }
+                education.append(edu)
+            
+            # Extract skills
+            skills = []
+            skill_items = await self._page.query_selector_all('.skill-item')
+            for item in skill_items:
+                skill = await item.inner_text()
+                skills.append(skill.strip())
+            
+            # Compile and return the data
+            data = {
+                "name": name,
+                "title": title,
+                "company": company,
+                "location": location,
+                "about": about,
+                "experience": experience,
+                "education": education,
+                "skills": skills,
+                "profile_url": valid_url,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            self.logger.info(f"Successfully collected data for profile: {name}")
+            return data
             
         except Exception as e:
-            logger.error(f"Data collection failed: {str(e)}")
+            self.logger.error(f"Data collection failed: {str(e)}")
             raise
+            
+    async def _get_text(self, selector: str) -> str:
+        """Helper method to safely get text content from an element."""
+        try:
+            element = await self._page.query_selector(selector)
+            if element:
+                return (await element.inner_text()).strip()
+        except Exception:
+            pass
+        return ""
+        
+    async def _get_element_text(self, parent: Any, selector: str) -> str:
+        """Helper method to safely get text content from a child element."""
+        try:
+            element = await parent.query_selector(selector)
+            if element:
+                return (await element.inner_text()).strip()
+        except Exception:
+            pass
+        return ""
 
     async def capture_gui_state(self, name: Optional[str] = None) -> Dict[str, str]:
         """
