@@ -1,8 +1,43 @@
 """
 LinkedIn automation client using Playwright.
 
-This module handles all LinkedIn-specific automation tasks including login,
-search, and data collection.
+This module provides a robust client for automating LinkedIn interactions, particularly
+focused on Sales Navigator functionality for prospecting. It handles authentication,
+search operations, and data collection while maintaining session state.
+
+Key Features:
+- Automated LinkedIn login with environment-based credentials
+- Sales Navigator search with multiple criteria support
+- Prospect data collection and extraction
+- Error handling and logging
+- Browser session management
+
+Environment Variables:
+    LINKEDIN_USERNAME: LinkedIn account username/email
+    LINKEDIN_PASSWORD: LinkedIn account password
+
+Example:
+    ```python
+    client = LinkedInClient()
+    await client.initialize()
+    
+    # Login to LinkedIn
+    await client.login()
+    
+    # Perform a search
+    results = await client.search_sales_navigator({
+        "title": "CTO",
+        "location": "San Francisco",
+        "industry": "Technology"
+    })
+    
+    # Clean up
+    await client.cleanup()
+    ```
+
+Note:
+    This client requires proper LinkedIn credentials to be set in environment
+    variables and assumes access to Sales Navigator functionality.
 """
 
 import asyncio
@@ -20,7 +55,28 @@ logger = logging.getLogger(__name__)
 
 
 class LinkedInClient:
-    """Client for automating LinkedIn tasks using Playwright."""
+    """Client for automating LinkedIn tasks using Playwright.
+    
+    This class provides methods for interacting with LinkedIn, particularly
+    Sales Navigator, in an automated fashion. It handles browser automation,
+    authentication, and data extraction.
+    
+    Attributes:
+        _browser (Optional[Browser]): Playwright browser instance
+        _page (Optional[Page]): Current browser page
+        _logged_in (bool): Current login state
+        base_url (str): LinkedIn base URL
+        sales_nav_url (str): Sales Navigator URL
+        logger (logging.Logger): Logger instance
+    
+    Methods:
+        initialize(): Set up browser and page
+        cleanup(): Clean up browser resources
+        login(): Authenticate with LinkedIn
+        search_sales_navigator(): Search for prospects
+        collect_prospect_data(): Extract data from profiles
+        execute_command(): Execute various LinkedIn automation commands
+    """
 
     def __init__(self):
         """Initialize the LinkedIn client."""
