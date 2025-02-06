@@ -6,8 +6,10 @@ endpoints for managing prospect data in Google Sheets.
 """
 
 from contextlib import asynccontextmanager
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import os
+import asyncio
+import json
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
@@ -15,7 +17,7 @@ from pydantic import BaseModel
 
 from common.messaging import RabbitMQClient
 from .sheets_client import GoogleSheetsClient
-from .utils import setup_logger
+from .utils import setup_logger, format_prospect_data
 
 # Initialize logger
 logger = setup_logger("shaun.main")
@@ -40,6 +42,106 @@ class CommandRequest(BaseModel):
     """Model for incoming command requests."""
     action: str
     parameters: Dict
+
+
+class ShaunAgent:
+    """Shaun agent for handling Google Sheets operations."""
+    
+    def __init__(self):
+        """Initialize the Shaun agent."""
+        self.sheets_client = GoogleSheetsClient()
+        self.mq_client = RabbitMQClient("shaun")
+        
+    async def initialize(self):
+        """Initialize RabbitMQ connection and set up message handlers."""
+        await self.mq_client.initialize()
+        await self.mq_client.subscribe(
+            "shaun_commands",
+            self.handle_command
+        )
+        
+    async def handle_command(self, message):
+        """
+        Handle incoming commands from RabbitMQ.
+        
+        Commands:
+        - update_prospects: Add or update prospect information in the sheet
+        - get_prospects: Retrieve prospect information from the sheet
+        """
+        async with message.process():
+            try:
+                body = json.loads(message.body.decode())
+                command = body.get("command")
+                data = body.get("data", {})
+                
+                if command == "update_prospects":
+                    response = await self.handle_update_prospects(data)
+                elif command == "get_prospects":
+                    response = await self.handle_get_prospects(data)
+                else:
+                    response = {
+                        "status": "error",
+                        "error": f"Unknown command: {command}"
+                    }
+                
+                await self.mq_client.publish_message(
+                    response,
+                    routing_key="shaun_responses",
+                    correlation_id=message.correlation_id
+                )
+                
+            except Exception as e:
+                error_response = {
+                    "status": "error",
+                    "error": str(e)
+                }
+                await self.mq_client.publish_message(
+                    error_response,
+                    routing_key="shaun_responses",
+                    correlation_id=message.correlation_id
+                )
+    
+    async def handle_update_prospects(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle updating prospects in the Google Sheet."""
+        try:
+            prospects = data.get("prospects", [])
+            formatted_data = [format_prospect_data(p) for p in prospects]
+            
+            # Update the sheet with the new prospect data
+            await self.sheets_client.update_prospects(formatted_data)
+            
+            return {
+                "status": "success",
+                "message": f"Updated {len(prospects)} prospects"
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": f"Failed to update prospects: {str(e)}"
+            }
+    
+    async def handle_get_prospects(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle retrieving prospects from the Google Sheet."""
+        try:
+            # Get filter criteria from data if any
+            filters = data.get("filters", {})
+            
+            # Retrieve prospects from the sheet
+            prospects = await self.sheets_client.get_prospects(filters)
+            
+            return {
+                "status": "success",
+                "prospects": prospects
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": f"Failed to retrieve prospects: {str(e)}"
+            }
+    
+    async def cleanup(self):
+        """Clean up RabbitMQ resources."""
+        await self.mq_client.cleanup()
 
 
 @asynccontextmanager
@@ -71,7 +173,6 @@ async def lifespan(app: FastAPI):
     yield
     
     # Cleanup on shutdown
-    import asyncio
     if sheets_client:
         cleanup_fn = getattr(sheets_client, "cleanup", None)
         if cleanup_fn:
@@ -191,4 +292,20 @@ async def health_check():
         "version": "1.0.0",
         "client_initialized": sheets_client is not None,
         "rabbitmq_connected": rabbitmq_client is not None
-    }) 
+    })
+
+
+async def main():
+    """Main entry point for the Shaun agent."""
+    agent = ShaunAgent()
+    try:
+        await agent.initialize()
+        # Keep the agent running
+        while True:
+            await asyncio.sleep(1)
+    except KeyboardInterrupt:
+        await agent.cleanup()
+
+
+if __name__ == "__main__":
+    asyncio.run(main()) 
