@@ -88,9 +88,6 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
         file: ./coverage.xml
         fail_ci_if_error: true
-        verbose: true
-        retry_max_count: 3
-        retry_delay_seconds: 90
 
   # Job to run code quality checks
   lint:
