@@ -5,7 +5,8 @@ description = "Zigral - AI-powered sales prospecting and outreach automation pla
 authors = ["Your Name <your.email@example.com>"]
 packages = [
     { include = "orchestrator", from = "src" },
-    { include = "context_manager", from = "src" }
+    { include = "context_manager", from = "src" },
+    { include = "agents", from = "src" }
 ]
 
 [tool.poetry.dependencies]
