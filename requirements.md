@@ -1,4 +1,4 @@
-Below is the comprehensive, updated Zigral Requirements Document that now includes detailed methodologies and processes for risk management, change control, security and privacy, CI/CD and automated testing, user acceptance testing (UAT) with human-in-the-loop feedback, and a modular LLM integration approach. Each section has been expanded to provide clear, concise instructions to help guide the development of Zigral.
+Below is the Zigral Requirements Document with a new “Model Context Protocol” section. This section describes a dedicated Context Manager microservice that stores and retrieves context (job parameters, historical action sequences, GUI states, and user feedback) to enrich LLM prompts and help agents learn over time. I’ve also indicated that an initial, basic version of the Context Manager should be built in Phase 1, with further refinements (e.g., reinforcement learning integration) added in Phase 3.
 
 ---
 
@@ -10,7 +10,7 @@ Below is the comprehensive, updated Zigral Requirements Document that now includ
 - **Lincoln (LinkedIn Agent):** Automates prospecting on LinkedIn/LinkedIn Sales Navigator.  
 - **Shaun (Google Sheets Agent):** Manages and updates prospect lists in Google Sheets.
 
-The application is built incrementally with robust error handling, detailed logging, automated testing, and a structured version control process. Containerization, an asynchronous messaging system, centralized persistent storage, caching, and a real-time dashboard ensure that the system is scalable, maintainable, and cost-effective. Future production deployments will run in a virtual desktop (or headless browser) environment.
+The application is built incrementally with robust error handling, detailed logging, automated testing, and a structured version control process. Containerization, asynchronous messaging, centralized persistent storage, caching, a real-time dashboard, and a dedicated model context protocol ensure the system is scalable, maintainable, and cost-effective. Future production deployments will run in a virtual desktop (or headless browser) environment.
 
 ---
 
@@ -20,56 +20,70 @@ The application is built incrementally with robust error handling, detailed logg
 
 - **Orchestrator (Project Manager):**
   - **Role & Function:**  
-    - Receives high-level user commands (e.g., “find all CTOs…”).  
-    - Leverages an LLM (with Retrieval Augmented Generation) to convert commands, along with any contextual data, into a structured JSON action sequence.  
-    - Coordinates tasks among agents via a standardized messaging protocol.
+    - Receives high-level user commands (e.g., “find all CTOs…”), leverages an LLM (with Retrieval Augmented Generation) to convert commands plus contextual data into a structured JSON action sequence, and coordinates tasks among agents.
   - **Processes & Methodologies:**  
-    - **Checkpointing:** Periodically pauses to validate outcomes either automatically or by prompting human input.  
-    - **Fallback Handling:** If an agent reports an error or unexpected state, the orchestrator initiates a fallback LLM call for corrective guidance.
-  - **Testing:** Unit tests (using pytest) for each orchestration function and end-to-end integration tests.
-  
+    - **Checkpointing & Fallback Handling:** Periodically pauses to validate outcomes and, if errors occur, triggers fallback LLM calls.
+  - **Testing:** Unit tests (using pytest) for orchestration functions and end-to-end integration tests.
+
 - **Agent Modules (Microservices):**
   - **Containerization:**  
-    - Each agent is deployed as an independent Docker container, ensuring isolation and independent scalability.
-  - **MVP Focus:**  
-    - **Lincoln (LinkedIn Agent):** Uses Playwright to automate browser tasks (login, search, data collection) on LinkedIn. Captures GUI states (screenshots or HTML snippets) for verification.
-    - **Shaun (Google Sheets Agent):** Uses an API (e.g., gspread) to connect to and update Google Sheets with prospect data from Lincoln.
+    - Each agent is deployed in its own Docker container for isolation and independent scalability.
+  - **For MVP:**  
+    - **Lincoln (LinkedIn Agent):** Uses Playwright to automate LinkedIn interactions (login, search, data collection) and captures GUI states (screenshots/HTML) for validation.
+    - **Shaun (Google Sheets Agent):** Uses an API (e.g., gspread) to connect to and update Google Sheets with data received from Lincoln.
   - **Inter-Agent Communication:**  
-    - Employs RabbitMQ as the message broker to exchange standardized JSON messages asynchronously.
-  
+    - Agents exchange standardized JSON messages asynchronously over RabbitMQ.
+
 - **User Interface (UI) & Dashboard:**
   - **Dashboard:**  
-    - A web-based, real-time dashboard displays Zigral’s progress—including agent statuses, logs, and key performance metrics.
-    - **Solution:** Grafana is used, with Prometheus for metrics collection and Grafana Loki for log aggregation.  
-    - **Methodology:** Real-time alerts and visualization ensure that any issues are promptly identified.
+    - A web-based, real-time dashboard displays Zigral’s progress, agent statuses, logs, and performance metrics.
+    - **Solution:** Grafana is used along with Prometheus for metrics and Grafana Loki for log aggregation and alerting.
 
 - **Data Persistence & Logging:**
   - **Database:**  
-    - PostgreSQL stores user reference data, prospect details, action sequences, and logs.  
-    - **Backup & Recovery:** Regular backup schedules are defined and documented for PostgreSQL.
+    - PostgreSQL stores user reference data, prospect details, action sequences, logs, and later, context information.
+    - **Backup & Recovery:** Regular backups are scheduled.
   - **Caching:**  
-    - Redis caches frequently accessed data and successful action sequences to reduce repetitive LLM calls.
+    - Redis caches frequently accessed data and successful action sequences to reduce redundant LLM calls.
   - **Message Broker:**  
-    - RabbitMQ provides asynchronous, decoupled communication between the orchestrator and agents.
+    - RabbitMQ handles asynchronous messaging between the orchestrator and agents.
   - **Logging & Observability:**  
-    - Logs are collected in Grafana Loki and key metrics in Prometheus, with visual dashboards in Grafana.  
-    - **Alerting:** Defined alert thresholds and notification channels (e.g., Slack/email) are set up for critical events.
+    - Logs are collected in Grafana Loki and key metrics in Prometheus, with visualization in Grafana.
 
 - **LLM Integration:**
   - **Modular Design:**  
-    - The integration layer is abstracted so that multiple providers (OpenAI, Deepseek R1, Claude, etc.) can be swapped or used for different tasks without changing the rest of the system.
+    - The LLM integration is abstracted to allow easy switching between providers (e.g., OpenAI, Deepseek R1, Claude) or using different models for specific tasks.
   - **Fallback Guidance:**  
-    - The LLM is used both for translating user commands into action sequences and for providing corrective steps when errors are detected.
-  
+    - The LLM is used for both generating action sequences and providing corrective steps when agents encounter errors.
+
 - **RPA Tools:**
   - **Playwright:**  
-    - Drives browser automation with human-like interactions to avoid detection and ensure reliability.
+    - Drives human-like browser automation on LinkedIn to ensure reliability and avoid detection.
 
 - **Virtual Desktop Environment:**
   - **Production Support:**  
-    - The architecture supports deployment into a virtual desktop or headless browser environment, ensuring that agents can run in the background without interfering with user operations.
+    - The architecture supports deployment into a virtual desktop or headless browser environment, allowing browser-based agents to run in the background without interfering with user operations.
   - **Resource Isolation:**  
-    - Strategies for resource management (e.g., container resource limits) ensure efficient use of the virtual desktop environment.
+    - Container resource limits and proper orchestration ensure efficient operation in a virtual desktop setting.
+
+- **Model Context Protocol (Context Manager):**  
+  - **Purpose:**  
+    - Enhances agent performance and learning by storing and retrieving contextual information for each job, such as search parameters, successful action sequences, GUI snapshots, and user feedback.
+  - **Integration:**  
+    - **Location in Architecture:**  
+      - Sits alongside the Orchestrator as a dedicated microservice.
+      - The Orchestrator queries the Context Manager before generating LLM prompts, and agents update context as tasks progress.
+    - **Implementation Approach:**  
+      - **Custom Microservice:** Build using FastAPI in Python.
+      - **Data Storage:** Use PostgreSQL to store structured context data (with optional Redis caching for frequently accessed entries).
+      - **API Endpoints:**  
+        - **POST /context:** Create a new context entry.
+        - **GET /context/{job_id}:** Retrieve context for a given job.
+        - **PUT /context/{job_id}:** Update context with new data (e.g., successful steps, error snapshots, user feedback).
+        - **DELETE /context/{job_id}:** Remove obsolete context.
+    - **Development Phase:**  
+      - Build an initial, basic Context Manager module in **Phase 1** to support essential context storage and retrieval.  
+      - Further enhancements (such as reinforcement learning integration and deeper context analytics) are planned for **Phase 3**.
 
 ---
 
@@ -78,15 +92,15 @@ The application is built incrementally with robust error handling, detailed logg
 ### 3.1 User Input & Contextual Data
 
 - **Command Input:**  
-  - Users submit high-level commands (e.g., “find all CTOs in territory”) via the web UI or CLI/API.
+  - Users submit high-level commands (e.g., “find all CTOs in territory”) via a web UI or CLI/API.
 - **Contextual Data:**  
-  - **MVP:** For the initial release, default or manually entered context will be used.  
+  - **MVP:** Default or manually entered context is used.
   - **Future Enhancement:**  
-    - Implement a setup prompt for users to upload their account list via CSV, including segmentation details (e.g., headcount, revenue).  
-    - Store this contextual data in PostgreSQL and provide it to the LLM and agents as needed.
+    - During setup, prompt users to upload their account list via CSV (including segmentation details like headcount or revenue).  
+    - Store this contextual data in PostgreSQL and provide it to the LLM and agents.
 - **Action Sequence Generation:**  
-  - The orchestrator uses the LLM to generate a JSON action sequence based on both the command and any contextual data.  
-  - **Example JSON:**  
+  - The orchestrator uses the LLM, enriched with contextual data from the Context Manager, to generate a JSON action sequence.
+  - **Example:**
     ```json
     {
       "objective": "Find all CTOs in territory",
@@ -102,26 +116,26 @@ The application is built incrementally with robust error handling, detailed logg
 ### 3.2 Agent Module Operations
 
 - **Lincoln (LinkedIn Agent):**  
-  - Automates login, search, and data collection on LinkedIn using Playwright.  
-  - Captures and sends the current GUI state for validation.
+  - Automates login, search, and data collection on LinkedIn using Playwright.
+  - Captures and sends current GUI state (screenshot/HTML snippet) for validation.
 - **Shaun (Google Sheets Agent):**  
-  - Connects to Google Sheets (via gspread) to update prospect lists.  
-  - Receives data from Lincoln and maintains data integrity.
+  - Connects to Google Sheets using an API library (e.g., gspread).
+  - Receives prospect data from Lincoln and updates the designated spreadsheet.
 - **Inter-Agent Communication:**  
-  - Uses RabbitMQ for standardized JSON message passing.
-  
+  - Uses RabbitMQ to exchange standardized JSON messages asynchronously.
+
 ### 3.3 Error Handling & Human-In-The-Loop Feedback
 
 - **Self-Reporting & Fallback:**  
-  - Each agent continuously monitors its operational state and reports errors or unexpected UI changes back to the orchestrator.  
-  - The orchestrator then triggers a fallback LLM call for corrective guidance.
+  - Agents monitor their operational state and report errors or unexpected changes to the orchestrator.
+  - The orchestrator triggers a fallback LLM call for corrective guidance (e.g., “retry action” or “click X”).
 - **Human-In-The-Loop (HITL):**  
-  - The system includes periodic checkpoints where the orchestrator pauses to request human feedback.  
+  - The system includes periodic checkpoints where the orchestrator pauses to request human feedback.
   - **Methodology:**  
-    - The user is prompted to validate outputs or override the current action sequence if necessary.  
-    - All user feedback is stored (in PostgreSQL) for reinforcement learning.
+    - Prompt users to validate outputs and, if necessary, manually adjust or override the generated action sequence.
+    - Store validated feedback in PostgreSQL to inform future LLM calls and reinforce learning.
 - **Reinforcement Learning:**  
-  - Validated outcomes and action sequences are recorded to reduce future LLM calls and improve performance.
+  - Validated action sequences and outcomes are stored for continuous improvement and reduced redundant LLM calls.
 
 ---
 
@@ -130,34 +144,42 @@ The application is built incrementally with robust error handling, detailed logg
 ### Phase 1: Project Setup and Orchestrator Prototype
 
 1. **Define Requirements & MVP Scope:**  
-   - Focus on developing Lincoln and Shaun initially.
+   - Focus on developing Lincoln (LinkedIn Agent) and Shaun (Google Sheets Agent) with a basic Context Manager.
 2. **Environment Setup:**  
    - Set up Git version control, a dedicated virtual environment, and install core dependencies (Python, Playwright, Asyncio, OpenAI API, Flask/FastAPI).
 3. **Orchestrator Development:**  
-   - Build an API/CLI that accepts user commands and contextual data.  
-   - Integrate the LLM to convert inputs into JSON action sequences.  
-   - Implement logging (with PostgreSQL and Grafana Loki) and periodic checkpoints.
-   - **Testing:** Write unit tests using pytest for every new function.
-4. **Version Control & Commit Strategy:**  
-   - **Commit Frequently:** Commit each atomic, test-passing unit of work to feature branches.
-   - **Milestone Merges:** Merge into the main branch after integration testing and review.
-   - **Documentation:** Use detailed commit messages.
+   - Create an API/CLI that accepts user commands and contextual data.
+   - Integrate LLM calls to convert inputs (with context) into JSON action sequences.
+   - Implement logging (with PostgreSQL and Grafana Loki) and checkpointing.
+   - **Testing:** Write unit tests using pytest for each new function.
+4. **Context Manager Module (Model Context Protocol):**  
+   - **Build Basic Version in Phase 1:**  
+     - Create a dedicated microservice using FastAPI.
+     - Define API endpoints (POST, GET, PUT, DELETE) for context management.
+     - Set up PostgreSQL (with optional Redis caching) for storage.
+     - Write initial tests for the context endpoints.
+   - **Future Enhancements (Phase 3):**  
+     - Expand reinforcement learning capabilities and deeper context analytics.
+5. **Version Control & Commit Strategy:**  
+   - **Frequent Commits:** Commit each atomic, test-passing unit of work to feature branches.
+   - **Milestone Merges:** Merge feature branches into the main branch after integration testing and review.
+   - **Detailed Commit Messages:** Document each commit clearly.
 
 ### Phase 2: Building and Integrating Individual Agents
 
 1. **Lincoln (LinkedIn Agent):**  
-   - Containerize using Docker.
+   - Containerize the agent with Docker.
    - Implement Playwright scripts for LinkedIn login, search, and data capture.
-   - Capture GUI states and report back via RabbitMQ.
-   - **Testing:** Develop unit tests for login simulation, search, and GUI capture.
+   - Capture and report GUI states via RabbitMQ.
+   - **Testing:** Develop unit tests for each core functionality.
 2. **Shaun (Google Sheets Agent):**  
-   - Containerize using Docker.
+   - Containerize with Docker.
    - Implement Google Sheets integration using gspread.
    - Update prospect lists based on data received from Lincoln.
    - **Testing:** Write tests for data insertion, updates, and error handling.
 3. **Inter-Agent Communication:**  
-   - Set up RabbitMQ as the messaging broker.
-   - Define and test JSON messaging formats.
+   - Set up RabbitMQ as the asynchronous messaging broker.
+   - Define and test standardized JSON messaging formats.
 4. **Error Handling & LLM Assistance:**  
    - Integrate error reporting and fallback mechanisms.
    - Write tests simulating error conditions and verifying fallback responses.
@@ -166,45 +188,47 @@ The application is built incrementally with robust error handling, detailed logg
 
 1. **Caching & Persistence:**  
    - Integrate Redis for caching successful action sequences.
-   - Use PostgreSQL for long-term storage of prospect data, logs, and action sequences.
-   - **Testing:** Develop tests for caching behavior and database operations.
+   - Continue to use PostgreSQL for persistent storage of prospect data, logs, and context.
+   - **Testing:** Write tests for caching behavior and database operations.
 2. **Multi-Agent Coordination & Data Handoffs:**  
-   - Automate data transfer (e.g., from Lincoln to Shaun).
-   - Create integration tests that simulate end-to-end workflows.
+   - Automate data transfers (e.g., from Lincoln to Shaun).
+   - Build integration tests simulating end-to-end workflows.
 3. **User Feedback & HITL Process:**  
    - Enhance the orchestrator to include regular human-in-the-loop checkpoints.
-   - Implement a feedback override capability and store feedback data.
+   - Implement the feedback override capability and store feedback data.
    - **Testing:** Validate the feedback loop and override process through simulated scenarios.
+4. **Reinforcement Learning Integration:**  
+   - Use the stored context and user feedback to adjust future LLM calls and improve performance.
 
 ### Phase 4: Virtual Desktop, Dashboard & Deployment
 
 1. **Virtual Desktop/Headless Environment:**  
-   - Package Zigral to run in a virtual desktop or headless environment, ensuring that browser-based agents run in isolation.
+   - Package Zigral to run in a virtual desktop or headless environment, ensuring browser-based agents run in isolation.
 2. **Real-Time Monitoring Dashboard:**  
-   - Deploy Grafana (with Prometheus and Grafana Loki) to create a real-time monitoring dashboard.
+   - Deploy Grafana (with Prometheus and Grafana Loki) for real-time monitoring.
    - Configure alerting thresholds and notification channels.
 3. **Scalability & Continuous Operation:**  
-   - Refine microservices to support long-duration tasks with automatic retries and self-healing.
-   - Conduct load and stress tests and write end-to-end tests to simulate prolonged operation.
+   - Refine microservices for long-duration tasks with automatic retries and self-healing.
+   - Conduct load and stress tests and write end-to-end tests for extended operation scenarios.
 
 ---
 
 ## 5. Technical Dependencies & Tools (Cost-Conscious Selections)
 
-- **Programming Language:** Python (with Asyncio for concurrency)
+- **Programming Language:** Python (with Asyncio)
 - **Containerization:** Docker
 - **Message Broker:** RabbitMQ
 - **Database:** PostgreSQL
 - **Caching:** Redis
 - **Automation/RPA:** Playwright
-- **LLM Integration:** OpenAI API (with a modular abstraction for switching models, e.g., Deepseek R1, Claude)
+- **LLM Integration:** OpenAI API (with a modular interface to allow easy switching between providers)
 - **API Framework:** Flask or FastAPI
-- **Testing:** pytest (with unit, integration, and end-to-end tests)
+- **Testing:** pytest (unit, integration, and end-to-end tests)
 - **Logging & Observability:**  
   - **Log Aggregation:** Grafana Loki  
   - **Metrics:** Prometheus  
   - **Dashboard:** Grafana
-- **Web UI:** Initially implemented with Flask templates or Streamlit
+- **Web UI:** Initially using Flask templates or Streamlit
 
 ---
 
@@ -212,18 +236,18 @@ The application is built incrementally with robust error handling, detailed logg
 
 - **Modularity & Incremental Development:**  
   - Develop each component as an independent, containerized microservice with clear APIs.
-  - Incrementally build and test features, starting with the MVP.
 - **Risk Management:**  
-  - **Risk Identification:** Regularly review dependencies (e.g., LinkedIn UI changes, API updates) and document potential risks.  
-  - **Mitigation & Change Control:** Establish a process for handling changes via feature branches and using Git pull requests (with reviews aided by ChatGPT and static analysis tools).  
-  - **Change Approval:** Even as a solo developer, document proposed changes and test extensively before merging.
+  - Regularly review external dependencies (e.g., LinkedIn UI, API updates) and document potential risks.
+  - Establish a change control process using Git feature branches and pull requests, with reviews (aided by ChatGPT and static analysis tools).
 - **Security & Privacy:**  
-  - Use secure vaults or environment variable managers (e.g., python-dotenv or a secrets manager) to protect credentials.  
-  - Enforce HTTPS and, where possible, mTLS for secure inter-service communication.  
-  - Implement role-based access control (RBAC) for internal APIs and encrypt sensitive data at rest and in transit.
+  - Use secure vaults or environment variable managers (e.g., python-dotenv) to protect credentials.
+  - Enforce HTTPS and mTLS for secure inter-service communication and use RBAC for internal APIs.
 - **DevOps & CI/CD Pipeline:**  
-  - Set up a CI/CD pipeline (e.g., GitHub Actions) to run automated tests on every commit and merge.  
-  - Monitor deployment metrics and costs, using the observability stack (Prometheus, Loki, Grafana).
+  - Set up a CI/CD pipeline (using GitHub Actions) to run automated tests on every commit and merge.
+  - Monitor deployment metrics and costs with the observability stack.
+- **User Feedback & Human-In-The-Loop:**  
+  - Incorporate periodic checkpoints where the orchestrator requests human feedback.
+  - Allow manual overrides and store validated feedback for reinforcement learning.
 
 ---
 
@@ -234,21 +258,22 @@ The application is built incrementally with robust error handling, detailed logg
 - **Milestone Merges:**  
   - Merge into the main branch after integration testing and review.
 - **Documentation:**  
-  - Ensure every commit has a descriptive message to maintain clear change history.
+  - Use detailed commit messages to maintain a clear change history.
 - **Code Review:**  
-  - Use ChatGPT as a supplementary tool to perform code reviews and provide suggestions alongside automated static analysis tools.
+  - Use ChatGPT as a supplementary tool for code reviews along with automated static analysis.
 
 ---
 
 ## 8. User Acceptance Testing (UAT) & Human-In-The-Loop (HITL) Feedback
 
 - **UAT Planning:**  
-  - After MVP completion, conduct a UAT phase where real user scenarios are simulated.
-  - Gather structured feedback via the dashboard and direct user interactions.
+  - After MVP completion, simulate real user scenarios and gather structured feedback.
 - **HITL Process:**  
-  - Implement periodic checkpoints where the orchestrator pauses and prompts for human validation.
-  - Allow users to override or adjust action sequences manually.
-  - Store all validated actions and user feedback in PostgreSQL to inform reinforcement learning and future iterations.
+  - Implement periodic checkpoints where the orchestrator pauses for human validation.
+  - Allow users to override or adjust the action sequence manually.
+  - Store feedback in PostgreSQL to inform future reinforcement learning.
+- **Testing:**  
+  - Automate feedback and override simulations in end-to-end tests.
 
 ---
 
@@ -259,13 +284,13 @@ The application is built incrementally with robust error handling, detailed logg
   - **Weekends:** 4 hours per day for integration, extended testing, and deployment tasks.
 - **MVP Launch Target:** February 15, 2025.
 - **Milestone Planning:**
-  - **Phase 1 (Orchestrator & Basic Setup):** Complete by February 5, 2025.
+  - **Phase 1 (Orchestrator, Basic Setup & Context Manager):** Complete by February 5, 2025.
   - **Phase 2 (Lincoln & Shaun Integration):** Complete by February 10, 2025.
-  - **Phase 3 (Extended Testing & Feedback Loop):** Complete by February 13, 2025.
+  - **Phase 3 (Extended Testing, Feedback & Reinforcement Learning):** Complete by February 13, 2025.
   - **Final Integration & Dashboard Deployment:** Complete by February 14, 2025.
 - **Agile/Sprint Planning:**
-  - Conduct daily stand-ups (self-managed) and maintain a sprint backlog.
-  - Regularly review progress via commit history and adjust priorities as necessary.
+  - Self-managed daily stand-ups and a maintained sprint backlog.
+  - Regular progress reviews via commit history and sprint retrospectives.
 
 ---
 
@@ -276,19 +301,39 @@ The application is built incrementally with robust error handling, detailed logg
 - **Additional Agents:**  
   - Extend coordination to include Phylicia (phone agent) and Amelia (email agent).
 - **Advanced Multi-Agent Coordination & Reinforcement Learning:**  
-  - Integrate reinforcement learning based on historical performance data to optimize action sequences.
+  - Leverage stored context and user feedback to further optimize action sequences.
 - **Enhanced Dashboard:**  
-  - Upgrade the UI for deeper analytics and improved usability.
+  - Upgrade the UI for deeper analytics and a more user-friendly experience.
 - **Scalability Improvements:**  
-  - Refine microservices architecture for sustained, long-duration operations.
+  - Continue refining microservices for sustained, long-duration operation.
 - **Modular LLM Integration:**  
-  - Continue refining the modular interface to easily switch between or combine different LLM providers for specialized tasks.
+  - Enhance the abstraction layer to easily switch between or combine LLM providers for specialized tasks.
+- **Production Deployment:**
+  - Deploy Zigral in a virtual desktop or headless environment.
+- **User-Created Agents:**
+  - Allow users to create their own agents and share them with others.
+  - Deploy functionality to support agents that are generated from a prompt.
 
 ---
 
 ## 11. Conclusion
 
-This comprehensive requirements document outlines a detailed, cost-effective, and modular approach to building Zigral’s MVP—initially focusing on Lincoln (LinkedIn Agent) and Shaun (Google Sheets Agent). The architecture supports future production deployment in a virtual desktop or headless environment. With detailed methodologies for risk management, security, CI/CD, testing, human-in-the-loop feedback, and modular LLM integration, along with a clear commit strategy and agile project management schedule, Zigral is positioned to meet its functional and business objectives by the MVP launch target of February 15, 2025.
+This comprehensive requirements document outlines a detailed, cost-effective, and modular approach to building Zigral’s MVP—initially focusing on Lincoln (LinkedIn Agent) and Shaun (Google Sheets Agent). The architecture supports production deployment in a virtual desktop or headless environment. With a dedicated Context Manager implementing the model context protocol, along with robust methodologies for risk management, security, CI/CD, testing, human-in-the-loop feedback, and modular LLM integration, Zigral is positioned to meet its functional and business objectives. The project is scheduled to launch its MVP on February 15, 2025.
 
 ---
 
+### Summary of the Model Context Protocol Implementation
+
+- **What It Does:**  
+  - Stores context data (e.g., search parameters, successful action sequences, GUI snapshots, user feedback) to enrich LLM prompts.
+- **Where It Sits:**  
+  - As a dedicated microservice (Context Manager) alongside the Orchestrator.
+- **How to Build It:**  
+  - Use FastAPI to implement RESTful endpoints (POST, GET, PUT, DELETE) for context management.
+  - Persist context data in PostgreSQL (with optional Redis caching).
+  - Develop unit tests for each endpoint.
+- **When to Build It:**  
+  - Build an initial, basic version in **Phase 1** (to support essential context retrieval and updates).
+  - Expand and refine the module (e.g., integrate reinforcement learning) in **Phase 3**.
+
+---
