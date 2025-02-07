@@ -22,9 +22,9 @@ from .utils import setup_logger, format_prospect_data
 # Initialize logger
 logger = setup_logger("shaun.main")
 
-# Initialize clients (None until configured)
-sheets_client = None
-rabbitmq_client = None
+# Initialize clients
+sheets_client = GoogleSheetsClient()
+rabbitmq_client = RabbitMQClient("shaun")
 
 
 class ProspectData(BaseModel):
