@@ -24,6 +24,10 @@ Below is a detailed plan for Phase 2 along with an "order of file creation" brea
 - ✅ Set up orchestrator hooks for agent commands
 - ✅ Added comprehensive test suite for orchestrator agent commands
 - ✅ Achieved 83% test coverage for orchestrator agent commands
+- ✅ Improved Lincoln agent API validation with strict action types
+- ✅ Enhanced Lincoln agent command response handling
+- ✅ Standardized error responses across agent endpoints
+- ✅ Achieved 75% test coverage for Lincoln agent main module
 
 ### In Progress
 - Improving test coverage for remaining modules
@@ -182,4 +186,54 @@ You can start by running each microservice individually (using commands like uvi
 
 ## Summary
 
-Phase 2 focuses on building the individual agents (Lincoln and Shaun) and integrating them into the existing framework. Follow the detailed steps and order-of-file creation to maintain structure and clarity. Running the application in development throughout this phase is highly recommended to ensure that each component functions as expected and to catch issues early. 
+Phase 2 focuses on building the individual agents (Lincoln and Shaun) and integrating them into the existing framework. Follow the detailed steps and order-of-file creation to maintain structure and clarity. Running the application in development throughout this phase is highly recommended to ensure that each component functions as expected and to catch issues early.
+
+## API Documentation
+
+### Lincoln Agent API
+
+#### POST /command
+Execute a LinkedIn automation command.
+
+**Request Body:**
+```json
+{
+    "action": "search" | "get_profile" | "capture_state",
+    "parameters": {
+        // Command-specific parameters
+        // Must not be empty
+    }
+}
+```
+
+**Actions:**
+- `search`: Search for profiles on LinkedIn
+  - Parameters:
+    - `title`: Job title to search for
+    - `location`: Location to search in
+- `get_profile`: Get detailed data for specific profiles
+  - Parameters:
+    - `profile_urls`: List of LinkedIn profile URLs
+- `capture_state`: Capture the current GUI state
+  - Parameters:
+    - Any additional configuration for state capture
+
+**Responses:**
+- 200 OK: Command executed successfully
+  ```json
+  {
+      "result": "success"
+  }
+  ```
+- 400 Bad Request: Invalid action or parameters
+  ```json
+  {
+      "detail": "Error message"
+  }
+  ```
+- 500 Internal Server Error: Agent not initialized or execution failed
+  ```json
+  {
+      "detail": "Error message"
+  }
+  ``` 
