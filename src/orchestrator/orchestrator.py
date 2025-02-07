@@ -30,6 +30,7 @@ Error Handling:
 - 500: Internal Server Error
 """
 
+from contextlib import asynccontextmanager
 from typing import Dict, List, Optional, Union
 
 from fastapi import FastAPI, HTTPException, Request
@@ -39,16 +40,14 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from .agent_commands import AgentCommandManager
 from .llm_integration import generate_action_sequence
 from .logger import get_logger
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
-# Initialize FastAPI app
-app = FastAPI(title="Zigral Orchestrator", version="3.0.0", description=__doc__)
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Initialize logger
 logger = get_logger(__name__)
 
 
@@ -119,11 +118,46 @@ class ErrorResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-@app.post("/command", response_model=Union[ActionSequence, ErrorResponse])
+class ExecutionResult(BaseModel):
+    """Model for execution results"""
+
+    objective: str
+    steps: List[Dict]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle startup and shutdown events."""
+    # Initialize agent command manager
+    app.state.agent_manager = AgentCommandManager()
+    await app.state.agent_manager.initialize()
+    logger.info("Agent command manager initialized")
+    
+    yield
+    
+    # Cleanup on shutdown
+    await app.state.agent_manager.cleanup()
+    logger.info("Agent command manager cleaned up")
+
+
+# Initialize FastAPI app with lifespan manager
+app = FastAPI(
+    title="Zigral Orchestrator",
+    version="3.0.0",
+    description=__doc__,
+    lifespan=lifespan
+)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.post("/command", response_model=Union[ExecutionResult, ErrorResponse])
 @limiter.limit("5/minute")  # Allow 5 requests per minute per IP
 async def process_command(request: Request, command: Command):
     """
-    Process a user command and generate an action sequence
+    Process a user command and execute the resulting action sequence
     """
     logger.info(f"Received command: {command.command}")
     try:
@@ -135,8 +169,17 @@ async def process_command(request: Request, command: Command):
         action_sequence = await generate_action_sequence(
             command=command.command, context=command.context
         )
-        logger.info("Successfully processed command")
-        return action_sequence
+        logger.info("Successfully generated action sequence")
+        
+        # Execute action sequence
+        results = await app.state.agent_manager.execute_action_sequence(action_sequence)
+        logger.info("Successfully executed action sequence")
+        
+        return ExecutionResult(
+            objective=action_sequence["objective"],
+            steps=results
+        )
+        
     except APIStatusError as e:
         if e.status_code == 429:
             logger.error(f"Error processing command: {str(e)}")
@@ -150,7 +193,10 @@ async def process_command(request: Request, command: Command):
 
 @app.get("/health")
 async def health_check():
-    """
-    Health check endpoint
-    """
-    return {"status": "healthy", "service": "orchestrator", "version": "3.0.0"}
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "service": "orchestrator",
+        "version": "3.0.0",
+        "agent_manager": hasattr(app.state, "agent_manager")
+    }

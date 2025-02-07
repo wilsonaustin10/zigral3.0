@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from openai import APIStatusError
 
 from orchestrator.orchestrator import app
+from orchestrator.agent_commands import AgentCommandManager
 
 
 @pytest.fixture
@@ -73,8 +74,19 @@ def mock_openai_client(mock_openai_response):
 
 
 @pytest.fixture
-def orchestrator_client():
-    """Test client for the orchestrator API"""
+def mock_agent_manager():
+    """Create a mock agent manager."""
+    manager = AsyncMock(spec=AgentCommandManager)
+    manager.execute_action_sequence = AsyncMock(return_value=[
+        {"step": {"agent": "test", "action": "test"}, "result": {"status": "success"}}
+    ])
+    return manager
+
+
+@pytest.fixture
+def orchestrator_client(mock_agent_manager):
+    """Create a test client for the orchestrator with mocked dependencies."""
+    app.state.agent_manager = mock_agent_manager
     return TestClient(app)
 
 
