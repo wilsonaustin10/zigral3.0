@@ -124,21 +124,26 @@ class LinkedInClient:
 
     async def login(self) -> bool:
         """
-        Log in to LinkedIn using environment variables.
+        Log in to LinkedIn using environment variables or prompt for credentials.
         
         Returns:
             bool: True if login successful, False otherwise
 
         Raises:
-            ValueError: If LinkedIn credentials are not found in environment variables
+            ValueError: If LinkedIn credentials are not provided
         """
         try:
             username = os.getenv("LINKEDIN_USERNAME")
             password = os.getenv("LINKEDIN_PASSWORD")
 
             if not username or not password:
-                self.logger.error("Login failed: LinkedIn credentials not found in environment variables")
-                raise ValueError("LinkedIn credentials not found in environment variables")
+                self.logger.info("LinkedIn credentials not found in environment variables. Please provide them:")
+                username = input("LinkedIn Username/Email: ")
+                password = input("LinkedIn Password: ")
+                
+                if not username or not password:
+                    self.logger.error("Login failed: LinkedIn credentials not found in environment variables")
+                    raise ValueError("LinkedIn credentials not found in environment variables")
 
             # Simulate login success for testing
             self.logger.info("Successfully logged in to LinkedIn")

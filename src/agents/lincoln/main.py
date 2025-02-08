@@ -7,12 +7,13 @@ endpoints for controlling LinkedIn automation tasks.
 
 import asyncio
 import json
-from typing import Dict, Optional, Any
+import os
+from typing import Dict, Optional, Any, Literal
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 
 from common.messaging import RabbitMQClient
 from .linkedin_client import LinkedInClient
@@ -23,8 +24,14 @@ logger = setup_logger("lincoln.main")
 
 class CommandRequest(BaseModel):
     """Model for incoming command requests."""
-    action: str
-    parameters: Dict
+    action: Literal["search", "get_profile", "capture_state", "login"]
+    parameters: Dict = Field(..., min_items=1)
+
+    @validator("parameters")
+    def validate_parameters(cls, v):
+        if not v:
+            raise ValueError("parameters cannot be empty")
+        return v
 
 
 class LincolnAgent:
@@ -38,6 +45,7 @@ class LincolnAgent:
     async def initialize(self):
         """Initialize RabbitMQ connection and set up message handlers."""
         await self.linkedin_client.initialize()
+        await self.linkedin_client.login()
         await self.mq_client.initialize()
         await self.mq_client.subscribe(
             "lincoln_commands",
@@ -65,6 +73,8 @@ class LincolnAgent:
                     response = await self.handle_get_profile_data(data)
                 elif command == "capture_state":
                     response = await self.handle_capture_state(data)
+                elif command == "login":
+                    response = await self.handle_login(data)
                 else:
                     response = {
                         "status": "error",
@@ -92,7 +102,7 @@ class LincolnAgent:
         """Handle searching for profiles on LinkedIn."""
         try:
             search_params = data.get("search_params", {})
-            results = await self.linkedin_client.search_sales_navigator(**search_params)
+            results = await self.linkedin_client.search_sales_navigator(search_params)
             
             return {
                 "status": "success",
@@ -138,6 +148,35 @@ class LincolnAgent:
                 "error": f"Failed to capture GUI state: {str(e)}"
             }
     
+    async def handle_login(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle LinkedIn login."""
+        try:
+            username = data.get("username")
+            password = data.get("password")
+            
+            if not username or not password:
+                return {
+                    "status": "error",
+                    "error": "Username and password are required"
+                }
+            
+            # Set environment variables for the login
+            os.environ["LINKEDIN_USERNAME"] = username
+            os.environ["LINKEDIN_PASSWORD"] = password
+            
+            # Attempt login
+            success = await self.linkedin_client.login()
+            
+            return {
+                "status": "success" if success else "error",
+                "message": "Successfully logged in" if success else "Login failed"
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": f"Login failed: {str(e)}"
+            }
+    
     async def cleanup(self):
         """Clean up RabbitMQ and LinkedIn client resources."""
         await self.linkedin_client.cleanup()
@@ -171,6 +210,7 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI app with lifespan manager
 app = FastAPI(title="Lincoln - LinkedIn Agent", lifespan=lifespan)
+app.state.testing = False
 
 
 @app.post("/command")
@@ -194,18 +234,35 @@ async def execute_command(request: CommandRequest):
         )
     
     try:
-        if request.action == "search_profiles":
+        if request.action == "login":
+            response = await app.state.agent.handle_login(request.parameters)
+        elif request.action == "search":
+            if not app.state.agent.linkedin_client._logged_in:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Please log in first using the login action"}
+                )
             response = await app.state.agent.handle_search_profiles(request.parameters)
-        elif request.action == "get_profile_data":
+        elif request.action == "get_profile":
+            if not app.state.agent.linkedin_client._logged_in:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Please log in first using the login action"}
+                )
             response = await app.state.agent.handle_get_profile_data(request.parameters)
         elif request.action == "capture_state":
+            if not app.state.agent.linkedin_client._logged_in:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Please log in first using the login action"}
+                )
             response = await app.state.agent.handle_capture_state(request.parameters)
         else:
             return JSONResponse(
                 status_code=400,
                 content={"detail": f"Unknown command: {request.action}"}
             )
-        
+
         return JSONResponse(status_code=200, content=response)
     except Exception as e:
         logger.error(f"Error executing command: {str(e)}")

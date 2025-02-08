@@ -28,7 +28,7 @@ def test_command_endpoint_client_not_initialized(client):
 async def test_command_endpoint_success(client, mock_linkedin_client):
     """Test successful command execution."""
     # Mock successful command execution
-    mock_linkedin_client.execute_command.return_value = {"result": "success"}
+    mock_linkedin_client.execute_command.return_value = {"status": "success", "profiles": []}
     
     # Set up the test state
     app.state.testing = True
@@ -44,7 +44,7 @@ async def test_command_endpoint_success(client, mock_linkedin_client):
     )
     
     assert response.status_code == 200
-    assert response.json() == {"result": "success"}
+    assert response.json() == {"status": "success", "profiles": []}
 
 @pytest.mark.asyncio
 async def test_command_endpoint_failure(client, mock_linkedin_client):

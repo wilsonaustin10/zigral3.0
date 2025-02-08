@@ -63,4 +63,16 @@ def get_logger(name: str):
     # Test the logger to ensure it's working
     contextualized_logger.debug(f"Logger initialized for module: {name}")
 
+    # Ensure that the logs directory exists
+    logs_path = os.path.join(os.getcwd(), "logs")
+    if not os.path.exists(logs_path):
+        os.makedirs(logs_path)
+
+    # Add a file sink to log errors if not already added
+    file_sink = os.path.join(logs_path, "error.log")
+    # Check if a sink with this path is already configured (this is heuristic)
+    sinks = [handler._sink for handler in new_logger._core.handlers.values() if hasattr(handler, '_sink')]
+    if file_sink not in sinks:
+        new_logger.add(file_sink, level="ERROR")
+
     return contextualized_logger

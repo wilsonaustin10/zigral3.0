@@ -22,9 +22,9 @@ from .utils import setup_logger, format_prospect_data
 # Initialize logger
 logger = setup_logger("shaun.main")
 
-# Initialize clients
-sheets_client = GoogleSheetsClient()
-rabbitmq_client = RabbitMQClient("shaun")
+# Initialize clients as None - they will be properly initialized in lifespan
+sheets_client = None
+rabbitmq_client = None
 
 
 class ProspectData(BaseModel):
@@ -53,12 +53,13 @@ class ShaunAgent:
         self.mq_client = RabbitMQClient("shaun")
         
     async def initialize(self):
-        """Initialize RabbitMQ connection and set up message handlers."""
+        try:
+            await self.sheets_client.initialize()
+        except Exception as e:
+            logger.error("Sheets client initialization failed: %s", e)
+            self.sheets_client = None
         await self.mq_client.initialize()
-        await self.mq_client.subscribe(
-            "shaun_commands",
-            self.handle_command
-        )
+        await self.mq_client.subscribe("shaun_commands", self.handle_command)
         
     async def handle_command(self, message):
         """
@@ -140,7 +141,8 @@ class ShaunAgent:
             }
     
     async def cleanup(self):
-        """Clean up RabbitMQ resources."""
+        """Clean up resources for both Sheets and RabbitMQ clients."""
+        await self.sheets_client.cleanup()
         await self.mq_client.cleanup()
 
 
@@ -151,44 +153,48 @@ async def lifespan(app: FastAPI):
     
     This replaces the deprecated @app.on_event decorators.
     """
-    # Initialize clients on startup
-    global sheets_client, rabbitmq_client
-    if os.environ.get("TESTING"):
-        logger.info("Skipping client initialization during testing")
-    else:
-        try:
-            await sheets_client.initialize()
-            logger.info("Google Sheets client initialized successfully")
-        except Exception as e:
-            logger.error("Failed to initialize Google Sheets client: %s", e)
-            sheets_client = None
+    try:
+        sheets_client = GoogleSheetsClient()
+        await sheets_client.initialize()
+        logger.info("Google Sheets client initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize Google Sheets client: %s", e)
+        sheets_client = None
 
-        try:
-            await rabbitmq_client.initialize()
-            logger.info("RabbitMQ client initialized successfully")
-        except Exception as e:
-            logger.error("Failed to initialize RabbitMQ client: %s", e)
-            rabbitmq_client = None
-    
+    try:
+        rabbitmq_client = RabbitMQClient("shaun")
+        await rabbitmq_client.initialize()
+        logger.info("RabbitMQ client initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize RabbitMQ client: %s", e)
+        rabbitmq_client = None
+
     yield
     
     # Cleanup on shutdown
     if sheets_client:
-        cleanup_fn = getattr(sheets_client, "cleanup", None)
-        if cleanup_fn:
-            if asyncio.iscoroutinefunction(cleanup_fn):
-                await cleanup_fn()
-            else:
-                cleanup_fn()
-        logger.info("Google Sheets client cleaned up successfully")
+        try:
+            cleanup_fn = getattr(sheets_client, "cleanup", None)
+            if cleanup_fn:
+                if asyncio.iscoroutinefunction(cleanup_fn):
+                    await cleanup_fn()
+                else:
+                    cleanup_fn()
+            logger.info("Google Sheets client cleaned up successfully")
+        except Exception as e:
+            logger.error("Failed to cleanup Google Sheets client: %s", e)
+            
     if rabbitmq_client:
-        cleanup_fn = getattr(rabbitmq_client, "cleanup", None)
-        if cleanup_fn:
-            if asyncio.iscoroutinefunction(cleanup_fn):
-                await cleanup_fn()
-            else:
-                cleanup_fn()
-        logger.info("RabbitMQ client cleaned up successfully")
+        try:
+            cleanup_fn = getattr(rabbitmq_client, "cleanup", None)
+            if cleanup_fn:
+                if asyncio.iscoroutinefunction(cleanup_fn):
+                    await cleanup_fn()
+                else:
+                    cleanup_fn()
+            logger.info("RabbitMQ client cleaned up successfully")
+        except Exception as e:
+            logger.error("Failed to cleanup RabbitMQ client: %s", e)
 
 
 # Initialize FastAPI app with lifespan manager
@@ -259,28 +265,32 @@ async def command_endpoint(request: CommandRequest):
 
 
 @app.post("/prospects")
-async def add_prospects(prospects: List[ProspectData]):
-    """
-    Add new prospects to the Google Sheet.
-    
-    Args:
-        prospects: List of prospect data to add.
-        
-    Returns:
-        Dict containing status and number of prospects added.
-        
-    Raises:
-        HTTPException: If the client is not initialized or update fails.
-    """
-    if not sheets_client:
-        return JSONResponse(status_code=500, content={"detail": "Sheets client not initialized"})
-    
+async def add_prospects_endpoint(prospects: List[ProspectData]):
+    """Add prospects to Google Sheets."""
     try:
-        result = await sheets_client.add_prospects([p.model_dump() for p in prospects])
-        added = result.get("added", [])
-        return JSONResponse(status_code=200, content={"status": "success", "prospects_added": len(added), "result": result})
+        if not sheets_client or not getattr(sheets_client, 'is_initialized', False):
+            raise HTTPException(status_code=500, detail="Google Sheets client not initialized")
+
+        # Format prospect data for Google Sheets
+        formatted_prospects = [format_prospect_data(prospect.model_dump()) for prospect in prospects]
+
+        # Add prospects to Google Sheets
+        result = await sheets_client.add_prospects(formatted_prospects)
+        if not result.get("success"):
+            raise Exception(result.get("error", "Failed to add prospects"))
+
+        return {
+            "status": "success",
+            "prospects_added": len(result.get("added", [])),
+            "result": {"success": result.get("success"), "added": result.get("added", [])}
+        }
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        logger.error("Failed to add prospects: %s", str(e))
+        error_message = e.detail if hasattr(e, "detail") else str(e)
+        return JSONResponse(
+            status_code=500,
+            content={"error": error_message}
+        )
 
 
 @app.get("/health")

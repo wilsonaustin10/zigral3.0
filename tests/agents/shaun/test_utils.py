@@ -19,9 +19,14 @@ def test_setup_logger():
 def test_validate_prospect_data_valid():
     """Test validation of valid prospect data."""
     data = {
-        "name": "John Doe",
-        "email": "john@example.com",
-        "company": "Test Inc"
+        "Full Name": "John Doe",
+        "Title": "CEO",
+        "Company": "Test Inc",
+        "Location": "San Francisco",
+        "LinkedIn URL": "https://linkedin.com/in/johndoe",
+        "Experience": "10+ years",
+        "Education": "MBA",
+        "Last Updated": "2024-02-08"
     }
     assert validate_prospect_data(data) is True
 
@@ -46,28 +51,45 @@ def test_validate_prospect_data_empty_fields():
 def test_format_prospect_row():
     """Test formatting of prospect data into row."""
     data = {
-        "name": "John Doe",
-        "email": "john@example.com",
-        "company": "Test Inc",
-        "phone": "123-456-7890",
-        "linkedin": "https://linkedin.com/in/johndoe",
-        "notes": "Test notes"
+        "Full Name": "John Doe",
+        "Title": "CEO",
+        "Company": "Test Inc",
+        "Location": "San Francisco",
+        "LinkedIn URL": "https://linkedin.com/in/johndoe",
+        "Experience": "10+ years",
+        "Education": "MBA",
+        "Last Updated": "2024-02-08"
     }
     row = format_prospect_row(data)
-    assert len(row) == 6
+    assert len(row) == 8
     assert row[0] == "John Doe"
+    assert row[1] == "CEO"
     assert row[2] == "Test Inc"
+    assert row[3] == "San Francisco"
+    assert row[4] == "https://linkedin.com/in/johndoe"
+    assert row[5] == "10+ years"
+    assert row[6] == "MBA"
+    assert row[7] == "2024-02-08"
 
 def test_format_prospect_row_missing_fields():
     """Test formatting of prospect data with missing fields."""
     data = {
-        "name": "John Doe",
-        "email": "john@example.com"
+        "Full Name": "John Doe",
+        "Title": "CEO",
+        "Company": "Test Inc",
+        "Location": "San Francisco",
+        "LinkedIn URL": "https://linkedin.com/in/johndoe"
     }
     row = format_prospect_row(data)
-    assert len(row) == 6
+    assert len(row) == 8
     assert row[0] == "John Doe"
-    assert row[2] == ""  # missing company should be empty string
+    assert row[1] == "CEO"
+    assert row[2] == "Test Inc"
+    assert row[3] == "San Francisco"
+    assert row[4] == "https://linkedin.com/in/johndoe"
+    assert row[5] == ""
+    assert row[6] == ""
+    assert row[7] == ""
 
 def test_get_credentials_path_not_found():
     """Test getting credentials path when file doesn't exist."""

@@ -60,11 +60,15 @@ async def test_cleanup(linkedin_client):
 
 
 @pytest.mark.asyncio
-async def test_login_failure(linkedin_client):
+async def test_login_failure(linkedin_client, monkeypatch):
     """Test that login fails when credentials are missing or invalid."""
+    # Mock input function
+    monkeypatch.setattr('builtins.input', lambda _: '')
+    
     # Set invalid credentials
     os.environ['LINKEDIN_USERNAME'] = ''
     os.environ['LINKEDIN_PASSWORD'] = ''
+    
     with pytest.raises(ValueError):
         await linkedin_client.login()
 

@@ -84,10 +84,10 @@ async def test_handle_search_profiles(lincoln_agent, mock_rabbitmq, mock_linkedi
     await lincoln_agent.handle_command(message)
     
     # Verify LinkedIn client was called with correct parameters
-    mock_linkedin_client.search_sales_navigator.assert_called_once_with(
-        keywords="CEO",
-        location="San Francisco"
-    )
+    mock_linkedin_client.search_sales_navigator.assert_called_once_with({
+        "keywords": "CEO",
+        "location": "San Francisco"
+    })
     
     # Verify response was published
     mock_rabbitmq.publish_message.assert_called_once()

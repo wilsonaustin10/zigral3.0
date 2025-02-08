@@ -37,3 +37,9 @@ coverage.xml
 .DS_Store
 Thumbs.db .env.test
 .env.test
+coverage.xml
+.coverage
+.pytest_cache/
+*.pyc
+__pycache__/
+

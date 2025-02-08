@@ -8,6 +8,7 @@ including logging setup and data validation functions.
 import logging
 from typing import Any, Dict, List, Optional
 from pathlib import Path
+import os
 
 def setup_logger(module_name: str = "shaun") -> logging.Logger:
     """Set up and configure logger for the Shaun agent."""
@@ -35,7 +36,7 @@ def validate_prospect_data(data: Dict[str, Any]) -> bool:
     Returns:
         bool: True if data is valid, False otherwise.
     """
-    required_fields = ['name', 'email', 'company']
+    required_fields = ['Full Name', 'Title', 'Company', 'Location', 'LinkedIn URL']
     return all(field in data and data[field] for field in required_fields)
 
 def format_prospect_row(data: Dict[str, Any]) -> List[str]:
@@ -48,17 +49,22 @@ def format_prospect_row(data: Dict[str, Any]) -> List[str]:
     Returns:
         List[str]: Formatted row data.
     """
-    fields = ['name', 'email', 'company', 'phone', 'linkedin', 'notes']
+    fields = ['Full Name', 'Title', 'Company', 'Location', 'LinkedIn URL', 'Experience', 'Education', 'Last Updated']
     return [str(data.get(field, '')) for field in fields]
 
 def get_credentials_path() -> Optional[Path]:
     """
-    Get the path to Google Sheets credentials file.
+    Get the path to Google Sheets credentials file, checking the 'GOOGLE_SHEETS_CREDENTIALS' environment variable first.
 
     Returns:
-        Optional[Path]: Path to credentials file if found, None otherwise.
+        Optional[Path]: Path to credentials file if set or found, otherwise None.
     """
-    creds_path = Path.home() / '.config' / 'gspread' / 'credentials.json'
+    env_creds = os.environ.get("GOOGLE_SHEETS_CREDENTIALS")
+    if env_creds:
+        return Path(env_creds)
+
+    home = os.environ.get("HOME", str(Path.home()))
+    creds_path = Path(home) / '.config' / 'gspread' / 'credentials.json'
     return creds_path if creds_path.exists() else None
 
 def format_prospect_data(prospect: Dict[str, Any]) -> Dict[str, Any]:

@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 from typing import Dict, Optional
+from pathlib import Path
 
 def setup_logger(name: str) -> logging.Logger:
     """Set up a logger with the specified name.
@@ -36,6 +37,10 @@ def setup_logger(name: str) -> logging.Logger:
     # Add file handler if LOG_FILE is set
     log_file = os.getenv("LOG_FILE")
     if log_file:
+        # Ensure log directory exists
+        log_dir = Path(log_file).parent
+        log_dir.mkdir(parents=True, exist_ok=True)
+        
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(formatter)

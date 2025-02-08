@@ -125,12 +125,15 @@ async def test_login_success(client, mock_page):
 
 
 @pytest.mark.asyncio
-async def test_login_missing_credentials(client):
+async def test_login_missing_credentials(client, monkeypatch):
     """Test login with missing credentials."""
+    # Mock input function
+    monkeypatch.setattr('builtins.input', lambda _: '')
+    
     # Clear environment variables
     os.environ.pop("LINKEDIN_USERNAME", None)
     os.environ.pop("LINKEDIN_PASSWORD", None)
-    
+
     # Attempt to login
     with pytest.raises(ValueError, match="LinkedIn credentials not found in environment variables"):
         await client.login()

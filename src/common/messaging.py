@@ -37,6 +37,7 @@ class RabbitMQClient:
         self._command_queue: Optional[aio_pika.Queue] = None
         self._response_queue: Optional[aio_pika.Queue] = None
         self.logger = logger
+        self.initialized = False
 
     def set_connect_func(self, func: Callable):
         """Set the connection function for testing.
@@ -51,17 +52,34 @@ class RabbitMQClient:
         Initialize RabbitMQ connection and channels.
 
         Raises:
-            Exception: If connection fails
+            ConnectionError: If RabbitMQ connection fails
+            RuntimeError: If initialization fails
         """
+        if self.initialized:
+            self.logger.warning("RabbitMQ client already initialized")
+            return
+
         try:
             # Get RabbitMQ URL from environment or use default
-            rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+            rabbitmq_url = os.getenv("RABBITMQ_URL")
+            if not rabbitmq_url:
+                rabbitmq_url = "amqp://guest:guest@localhost:5672/"
+                self.logger.warning(
+                    "RABBITMQ_URL not set, using default: %s", 
+                    rabbitmq_url
+                )
             
             # Connect to RabbitMQ
+            self.logger.info("Connecting to RabbitMQ at %s", rabbitmq_url)
             self.connection = await self._connect_func(rabbitmq_url)
+            
+            # Create channel
+            self.logger.debug("Creating RabbitMQ channel")
             self.channel = await self.connection.channel()
+            await self.channel.set_qos(prefetch_count=1)
             
             # Declare queues
+            self.logger.debug("Declaring RabbitMQ queues")
             self._command_queue = await self.channel.declare_queue(
                 f"{self.service_name}_commands",
                 durable=True
@@ -71,21 +89,32 @@ class RabbitMQClient:
                 durable=True
             )
             
-            self.logger.info(f"RabbitMQ client initialized for {self.service_name}")
+            self.initialized = True
+            self.logger.info("RabbitMQ client initialized successfully for %s", self.service_name)
+            
+        except aio_pika.AMQPConnectionError as e:
+            self.logger.error("Failed to connect to RabbitMQ: %s", str(e))
+            raise ConnectionError(f"Failed to connect to RabbitMQ: {str(e)}")
         except Exception as e:
-            self.logger.error(f"Failed to initialize RabbitMQ client: {str(e)}")
-            raise
+            self.logger.error("Failed to initialize RabbitMQ client: %s", str(e))
+            raise RuntimeError(f"Failed to initialize RabbitMQ client: {str(e)}")
 
     async def cleanup(self) -> None:
         """Clean up RabbitMQ resources."""
         try:
-            if self.channel:
+            if self.channel and not self.channel.is_closed:
+                self.logger.debug("Closing RabbitMQ channel")
                 await self.channel.close()
-            if self.connection:
+                
+            if self.connection and not self.connection.is_closed:
+                self.logger.debug("Closing RabbitMQ connection")
                 await self.connection.close()
-            self.logger.info("RabbitMQ resources cleaned up")
+                
+            self.initialized = False
+            self.logger.info("RabbitMQ resources cleaned up successfully")
         except Exception as e:
-            self.logger.error(f"Error cleaning up RabbitMQ resources: {str(e)}")
+            self.logger.error("Error cleaning up RabbitMQ resources: %s", str(e))
+            raise
 
     async def publish_message(
         self, 

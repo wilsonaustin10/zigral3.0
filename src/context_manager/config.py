@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     # OpenAI settings
     OPENAI_API_KEY: str = "your_api_key_here"
 
+    # Google Sheets settings
+    GOOGLE_SHEETS_CREDENTIALS: str = "config/credentials/credentials.json"
+
+    # RabbitMQ settings
+    RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
+
     # Tortoise ORM settings
     TORTOISE_ORM: Dict[str, Any] = {
         "connections": {
