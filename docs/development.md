@@ -236,6 +236,42 @@ The project uses GitHub Actions for continuous integration:
 
 ## Agent Development
 
+### Lincoln (LinkedIn Agent)
+
+The Lincoln agent is responsible for automating LinkedIn interactions. It provides functionality for:
+- Automated login to LinkedIn using environment variables or secure credentials
+- Sales Navigator search operations
+- Profile data collection and extraction
+- GUI state capture for debugging and validation
+
+#### Credentials Management
+
+The agent supports LinkedIn credentials through:
+1. Environment variables: `LINKEDIN_USERNAME` and `LINKEDIN_PASSWORD`
+2. Interactive input during runtime (if environment variables are not set)
+3. Command-based login through the API
+
+#### Testing the Lincoln Agent
+
+1. **Mock Browser Setup**:
+   - Tests use Playwright's test context for browser simulation
+   - Mock page and element interactions
+   - Capture GUI states without real browser
+
+2. **Test Coverage**:
+   - Core functionality: 83%
+   - RabbitMQ integration: 66%
+   - API endpoints: 75%
+
+3. **Test Structure**:
+   ```
+   tests/agents/lincoln/
+   ├── test_linkedin_client.py  # Tests for LinkedIn automation
+   ├── test_main.py            # Tests for FastAPI endpoints
+   ├── test_rabbitmq.py        # Tests for message handling
+   └── test_utils.py           # Tests for utility functions
+   ```
+
 ### Shaun (Google Sheets Agent)
 
 The Shaun agent is responsible for managing prospect data in Google Sheets. It provides functionality for:
@@ -256,7 +292,7 @@ The agent will check these locations in order and use the first valid credential
 #### Testing the Shaun Agent
 
 1. **Mock Credentials**:
-   - A mock credentials file is provided at `tests/agents/shaun/test_creds.json`
+   - A mock credentials file is provided for testing
    - Tests use a `DummyCredentials` class for simulating Google auth
    - The test suite validates all credential loading paths:
      - Explicit path
@@ -264,25 +300,84 @@ The agent will check these locations in order and use the first valid credential
      - Default location
 
 2. **Test Coverage**:
-   - Initialization and cleanup: 100%
-   - Credentials handling: 100%
-   - Sheet operations: 83%
-   - Error scenarios: Fully covered
+   - Core functionality: 85%
+   - Google Sheets integration: 83%
+   - Utility functions: 100%
 
 3. **Test Structure**:
    ```
    tests/agents/shaun/
    ├── test_sheets_client.py  # Tests for Google Sheets client
-   ├── test_utils.py         # Tests for utility functions
-   └── test_creds.json      # Mock credentials for testing
+   ├── test_main.py          # Tests for FastAPI endpoints
+   ├── test_rabbitmq.py      # Tests for message handling
+   └── test_utils.py         # Tests for utility functions
    ```
 
-4. **Running Shaun Tests**:
-   ```bash
-   poetry run pytest tests/agents/shaun/ -v
+### Agent Communication
+
+Both agents use RabbitMQ for asynchronous communication:
+
+1. **Message Queues**:
+   - `lincoln_commands`: Commands for LinkedIn operations
+   - `lincoln_responses`: Results from LinkedIn operations
+   - `shaun_commands`: Commands for Google Sheets operations
+   - `shaun_responses`: Results from Google Sheets operations
+
+2. **Command Format**:
+   ```json
+   {
+       "command": "action_name",
+       "data": {
+           // Command-specific parameters
+       }
+   }
    ```
 
-5. **Adding New Tests**:
-   - Use the provided fixtures: `mock_credentials`, `mock_gspread`, etc.
-   - Follow the existing pattern for mocking Google Sheets operations
-   - Ensure proper cleanup in test functions 
+3. **Response Format**:
+   ```json
+   {
+       "status": "success" | "error",
+       "data": {
+           // Response data
+       },
+       "error": "Error message if status is error"
+   }
+   ```
+
+### Running Tests
+
+```bash
+# Run all agent tests
+poetry run pytest tests/agents/ -v
+
+# Run specific agent tests
+poetry run pytest tests/agents/lincoln/ -v
+poetry run pytest tests/agents/shaun/ -v
+
+# Run with coverage
+poetry run pytest tests/agents/ -v --cov=src/agents --cov-report=xml
+```
+
+### Best Practices
+
+1. **Error Handling**:
+   - All external operations (LinkedIn, Google Sheets) should have proper try/except blocks
+   - Network errors should be caught and logged
+   - Invalid data should be validated before processing
+
+2. **Logging**:
+   - Use the agent-specific logger
+   - Log all important operations and errors
+   - Include relevant context in log messages
+
+3. **Testing**:
+   - Mock external services in tests
+   - Test both success and failure scenarios
+   - Maintain high test coverage
+   - Use appropriate fixtures for common setup
+
+4. **Security**:
+   - Never hardcode credentials
+   - Use environment variables or secure vaults
+   - Validate all input data
+   - Handle sensitive data securely 
