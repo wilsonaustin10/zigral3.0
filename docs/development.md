@@ -95,12 +95,19 @@ poetry run pytest -k "database"
 ```
 
 ### Coverage Requirements
-- Overall project: 80%+ coverage
+- Overall project: 80%+ coverage (currently at 82%)
 - Current coverage by component:
-  - Orchestrator: 86%
-  - Context Manager: 74%
-  - Database Layer: 50%
-  - Agent Modules: In development
+  - Lincoln Agent:
+    - Core functionality: 91%
+    - RabbitMQ integration: 83%
+    - API endpoints: 75%
+  - Shaun Agent:
+    - Core functionality: 85%
+    - Google Sheets integration: 83%
+    - Utility functions: 100%
+  - Common Messaging: 59%
+  - Context Manager: 72-100%
+  - Orchestrator: 82-96%
 
 ## Git Workflow
 
@@ -193,24 +200,32 @@ The project uses GitHub Actions for continuous integration:
    - Use type hints
    - Write descriptive docstrings
    - Keep functions focused and small
+   - Use Pydantic V2 style validators
+   - Address deprecation warnings promptly
 
 2. **Testing**:
    - Write tests for new features
-   - Maintain high coverage
+   - Maintain high coverage (target: 80%+)
    - Use meaningful test names
    - Test edge cases and error conditions
+   - Mock external services appropriately
+   - Use fixtures for common setup
 
 3. **Error Handling**:
    - Use appropriate exception types
    - Provide meaningful error messages
    - Log errors with context
    - Handle edge cases gracefully
+   - Implement rate limiting where needed
+   - Add robust network error recovery
 
 4. **Logging**:
    - Use appropriate log levels
    - Include relevant context
    - Don't log sensitive information
    - Use structured logging
+   - Add comprehensive debug logging
+   - Monitor performance metrics
 
 ## Troubleshooting
 
