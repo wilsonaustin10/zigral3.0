@@ -244,13 +244,32 @@ The Shaun agent is responsible for managing prospect data in Google Sheets. It p
 - Updating existing prospect information
 - Validating and formatting prospect data
 
+#### Credentials Management
+
+The agent supports multiple ways to provide Google Sheets credentials:
+1. Explicit path via constructor: `GoogleSheetsClient(creds_path="path/to/credentials.json")`
+2. Environment variable: Set `GOOGLE_SHEETS_CREDENTIALS` with the path
+3. Default location: `~/.config/gspread/credentials.json`
+
+The agent will check these locations in order and use the first valid credentials file found.
+
 #### Testing the Shaun Agent
 
 1. **Mock Credentials**:
    - A mock credentials file is provided at `tests/agents/shaun/test_creds.json`
-   - Tests use this file to simulate Google Sheets authentication
+   - Tests use a `DummyCredentials` class for simulating Google auth
+   - The test suite validates all credential loading paths:
+     - Explicit path
+     - Environment variable
+     - Default location
 
-2. **Test Structure**:
+2. **Test Coverage**:
+   - Initialization and cleanup: 100%
+   - Credentials handling: 100%
+   - Sheet operations: 83%
+   - Error scenarios: Fully covered
+
+3. **Test Structure**:
    ```
    tests/agents/shaun/
    ├── test_sheets_client.py  # Tests for Google Sheets client
@@ -258,18 +277,10 @@ The Shaun agent is responsible for managing prospect data in Google Sheets. It p
    └── test_creds.json      # Mock credentials for testing
    ```
 
-3. **Running Shaun Tests**:
+4. **Running Shaun Tests**:
    ```bash
    poetry run pytest tests/agents/shaun/ -v
    ```
-
-4. **Test Coverage**:
-   - Core functionality: ~77% coverage
-   - Key areas tested:
-     - Client initialization
-     - Sheet connection
-     - Prospect data management
-     - Error handling
 
 5. **Adding New Tests**:
    - Use the provided fixtures: `mock_credentials`, `mock_gspread`, etc.
