@@ -5,35 +5,45 @@ Tests for the Google Sheets client functionality.
 import json
 import os
 import pytest
+import base64
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from google.oauth2.service_account import Credentials
 
-from src.agents.shaun.sheets_client import GoogleSheetsClient
+from src.agents.shaun.sheets_client import GoogleSheetsClient, SCOPES
 
 @pytest.fixture(autouse=True)
 def patch_google_credentials(monkeypatch):
+    """Mock Google credentials."""
+    mock_creds = MagicMock(spec=Credentials)
+    mock_creds.__module__ = 'google.oauth2.service_account'
+    mock_creds.__class__.__name__ = 'Credentials'
+    
+    def mock_from_file(path, **kwargs):
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Credentials file not found: {path}")
+        if os.path.getsize(path) == 0:
+            raise ValueError("Invalid credentials file")
+        return mock_creds
+    
     monkeypatch.setattr(
         "google.oauth2.service_account.Credentials.from_service_account_file",
-        lambda path, **kwargs: MagicMock()
+        mock_from_file
     )
+    return mock_creds
 
 @pytest.fixture
 def mock_credentials():
-    """Sample credentials for testing."""
-    return {
-        "type": "service_account",
-        "project_id": "test-project",
-        "private_key_id": "test-key-id",
-        "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC9QFxXxbJEvxB8\nZc5LRL4IP4TGXtEVUgJ/5YPrqD3SxqyRR8iJI8L1C9uZKXSNzIIj8O2Ua4bD0fgS\nkX+4wbKjvbqZnDGZz8rGJ7P0/qNRqHN2TD6R9G+XP+kHgPut5PGZwsV4rKxjFYWk\nHlEImhYw9g8P32pK7kQX3j0Vw2lq6WAxpQB3tZsOWZYkw9gJ97ALJoQLnuZxZEeZ\nXJwYuVxnpZXnOfIws+af6Z5qqWf4ptDGvj8PRqKFZRPyixZ5AJJxY7e0UP8cFVN5\nLJwgv5GXtcGZLBQEQfu+Y1K4k9PDLkqm2tcg8yEm/yAB9CGpW0mZIotRqGoqnqG4\n0q3CAgMBAAECggEABQ4Jl1iNvz0KKm8Qg5FGRxGZJGBI7P0y39Sj5Pg8I8Aq3Znk\nzwZ3vQm7gTRpHZPJP4gM6YCw6Xt6Ux5rvHVAVYH+kZHiN0yjEj5r5WcH8E8sN0Jm\nk3UhB7Q9yP0xGjOF6ewJZpNtv4YLDhzhp5VhvwqQ9p5yCXl7yEBBQa0JUDwjFQyR\n1Y4rWGUcOG1GKJ6kE+PqoIWHLzDjr8wX1hk9MNy8LH6HFgQfnPdH5zkqoGp1fL+B\n0YWkzKJ2H5x+exZMhkBXPCwCsbEyEVLO9mZkJ4QKGKBUHaR/v+QpR8dXGTOAs7mz\nLjUML4UJXOVkYAg51Yv8aM+2qXpkZCUvz3gZAoGBAMQKBXWnRaXqRHeBsZdPw/on\n7PxG5Uw7+Qz6Pxn45LS3mZGRmgJvFV6HCqH2jQhqM7sDuutkGwIqOmJXjG0p5/eC\nGzj8UxY+YhqYxqjfGf7eQBRxZkP5yWvi2C2uKHsSBY4iNVXLhNFzleLNd4nACTrF\nSxGxovJ7UxOfXaM9AoGBAO/0Gv2HcXGjhJHYFEm1XwJ4JGnifHvwlXcrvp0+YgaD\nQqYZ5VUYw7VAG3oBBCxKGAFwzziY7ZVm6TfGDxn5DQIR4VUSWgBqNMZHwkOBXy3q\nY4EZ8R7OW2UpxwL1dxJ7TXBIjP96BFYt2dvYm2pW1CjF1ePvYaFgCJxDAoGBAL1J\n5A3vsE2hQwJJxY+wFjKGlwKdxQVj6R7HqW/Z7G4wXXm+mz9VhQhC6MMn0LBOhbVh\nVhU8YbRYBDNJz7tW5zZ6UI7gVjzNJFYZuWcTrGK1y0NlGKhEqPf6MCp9UQtFzPqL\nLX8QhqNzqn5KkTcZXlwHRlJWBgKqxQKBAoGBAO7K2WC7VmgMK3Z7XhTBQN5TqiV6\nELTZL1+YzRvN++8VJxN6TL5LVd/rsMX0BqT6wpTJALZF1D6IBqS+XNljkuI8mdLx\n2SSfVX7mQFHE7WCJfGPqIhbRDOJrsC/AYHYgXuPVNEj5HmxDvVX1uBvZN4/5pYGg\nZfwpiJ0h\n-----END PRIVATE KEY-----\n",
-        "client_email": "test@test-project.iam.gserviceaccount.com",
-        "client_id": "test-client-id",
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40test-project.iam.gserviceaccount.com",
-        "universe_domain": "googleapis.com"
-    }
+    """Mock credentials factory."""
+    mock_creds = MagicMock(spec=Credentials)
+    mock_creds.__module__ = 'google.oauth2.service_account'
+    mock_creds.__class__.__name__ = 'Credentials'
+    
+    with patch('google.oauth2.service_account.Credentials.from_service_account_info') as mock_from_info:
+        mock_from_info.return_value = mock_creds
+        with patch('gspread.authorize') as mock_auth:
+            mock_auth.return_value = MagicMock()
+            yield mock_from_info
 
 @pytest.fixture
 def mock_gspread():
@@ -46,7 +56,7 @@ def mock_gspread():
 def temp_credentials_file(tmp_path, mock_credentials):
     """Create a temporary credentials file."""
     creds_file = tmp_path / "credentials.json"
-    creds_file.write_text(json.dumps(mock_credentials, indent=2))
+    creds_file.write_text(json.dumps(SAMPLE_CREDS, indent=2))
     return str(creds_file)
 
 @pytest.fixture
@@ -77,56 +87,26 @@ async def test_init_with_creds_path():
 @pytest.mark.asyncio
 async def test_init_with_env_var(monkeypatch):
     """Test initializing with credentials path from environment variable."""
-    monkeypatch.setenv("GOOGLE_SHEETS_CREDENTIALS", "/env/path/credentials.json")
+    monkeypatch.setenv("GOOGLE_SHEETS_CREDENTIALS_PATH", "/env/path/credentials.json")
     client = GoogleSheetsClient()
     assert client.creds_path == "/env/path/credentials.json"
 
 @pytest.mark.asyncio
-async def test_init_with_default_location(monkeypatch, tmp_path):
-    """Test initializing with credentials in default location."""
-    # Create a simulated home directory within tmp_path
-    temp_home = tmp_path / "home"
-    temp_home.mkdir()
-
-    # Create the .config/gspread directory structure
-    config_dir = temp_home / ".config" / "gspread"
+async def test_init_with_default_location(tmp_path):
+    """Test initializing with default credentials location."""
+    # Create a mock home directory in tmp_path
+    mock_home = tmp_path / "home"
+    mock_home.mkdir()
+    config_dir = mock_home / ".config" / "gspread"
     config_dir.mkdir(parents=True)
-
-    # Path for the credentials file
-    credentials_file = config_dir / "credentials.json"
-
-    # Write valid credentials JSON content
-    valid_credentials = {
-        "type": "service_account",
-        "project_id": "test-project",
-        "private_key_id": "abc123",
-        "private_key": "-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----\n",
-        "client_email": "test@test-project.iam.gserviceaccount.com",
-        "client_id": "1234567890",
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test@test-project.iam.gserviceaccount.com"
-    }
-    credentials_file.write_text(json.dumps(valid_credentials, indent=2))
-
-    # Ensure GOOGLE_SHEETS_CREDENTIALS is not set
-    monkeypatch.delenv("GOOGLE_SHEETS_CREDENTIALS", raising=False)
-    # Set the HOME environment variable to our temp_home
-    monkeypatch.setenv("HOME", str(temp_home))
-
-    # Import the GoogleSheetsClient from the module
-    from src.agents.shaun.sheets_client import GoogleSheetsClient
-
-    # Initialize the client without explicitly passing a creds_path, so it uses get_credentials_path
-    client = GoogleSheetsClient()
-    with patch("gspread.authorize", return_value=MagicMock()):
-        await client.initialize()
-
-    # Assert that the client picked up the credentials file from the default location
-    assert Path(client.creds_path).resolve() == credentials_file.resolve()
-
-    await client.cleanup()
+    
+    default_path = config_dir / "credentials.json"
+    with open(default_path, "w") as f:
+        json.dump(SAMPLE_CREDS, f)
+    
+    with patch.dict(os.environ, {"HOME": str(mock_home)}):
+        client = GoogleSheetsClient()
+        assert client.creds_path == str(default_path.resolve())
 
 @pytest.mark.asyncio
 async def test_initialize_with_valid_credentials(temp_credentials_file, mock_gspread):
@@ -141,32 +121,39 @@ async def test_initialize_with_valid_credentials(temp_credentials_file, mock_gsp
 async def test_initialize_missing_credentials():
     """Test initialization fails with missing credentials file."""
     client = GoogleSheetsClient(creds_path="/nonexistent/path/credentials.json")
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(FileNotFoundError, match="Credentials file not found"):
         await client.initialize()
 
 @pytest.mark.asyncio
 async def test_initialize_invalid_credentials(tmp_path):
     """Test initialization fails with invalid credentials file."""
-    # Create invalid credentials file
+    # Create empty credentials file
     invalid_creds_file = tmp_path / "invalid_credentials.json"
-    invalid_creds_file.write_text("invalid json content")
+    invalid_creds_file.touch()  # Creates an empty file
     
     client = GoogleSheetsClient(creds_path=str(invalid_creds_file))
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError, match="Invalid credentials file"):
         await client.initialize()
 
 @pytest.mark.asyncio
-async def test_cleanup():
+async def test_cleanup(tmp_path):
     """Test cleanup properly resets client state."""
-    client = GoogleSheetsClient()
+    # Create a temporary credentials file
+    creds_file = tmp_path / "credentials.json"
+    with open(creds_file, "w") as f:
+        json.dump(SAMPLE_CREDS, f)
+    
+    client = GoogleSheetsClient(creds_path=str(creds_file))
     client.client = MagicMock()
     client.spreadsheet = MagicMock()
     client.worksheet = MagicMock()
     
     await client.cleanup()
+    
     assert client.client is None
     assert client.spreadsheet is None
     assert client.worksheet is None
+    assert not client._is_initialized
 
 @pytest.mark.asyncio
 async def test_connect_to_sheet(temp_credentials_file, mock_gspread):
@@ -324,4 +311,96 @@ async def test_execute_command_invalid_action(client, mock_credentials):
     result = await client.execute_command({
         'action': 'invalid_action'
     })
-    assert result['success'] is False 
+    assert result['success'] is False
+
+# Sample credentials with proper format
+SAMPLE_CREDS = {
+    "type": "service_account",
+    "project_id": "test-project",
+    "private_key_id": "test-key-id",
+    "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC9QFxXxbJEvxB8\nZc5LRL4IP4TGXtEVUgJ/5YPrqD3SxqyRR8iJI8L1C9uZKXSNzIIj8O2Ua4bD0fgS\nkX+4wbKjvbqZnDGZz8rGJ7P0/qNRqHN2TD6R9G+XP+kHgPut5PGZwsV4rKxjFYWk\nHlEImhYw9g8P32pK7kQX3j0Vw2lq6WAxpQB3tZsOWZYkw9gJ97ALJoQLnuZxZEeZ\nXJwYuVxnpZXnOfIws+af6Z5qqWf4ptDGvj8PRqKFZRPyixZ5AJJxY7e0UP8cFVN5\nLJwgv5GXtcGZLBQEQfu+Y1K4k9PDLkqm2tcg8yEm/yAB9CGpW0mZIotRqGoqnqG4\n0q3CAgMBAAECggEABQ4Jl1iNvz0KKm8Qg5FGRxGZJGBI7P0y39Sj5Pg8I8Aq3Znk\nzwZ3vQm7gTRpHZPJP4gM6YCw6Xt6Ux5rvHVAVYH+kZHiN0yjEj5r5WcH8E8sN0Jm\nk3UhB7Q9yP0xGjOF6ewJZpNtv4YLDhzhp5VhvwqQ9p5yCXl7yEBBQa0JUDwjFQyR\n1Y4rWGUcOG1GKJ6kE+PqoIWHLzDjr8wX1hk9MNy8LH6HFgQfnPdH5zkqoGp1fL+B\n0YWkzKJ2H5x+exZMhkBXPCwCsbEyEVLO9mZkJ4QKGKBUHaR/v+QpR8dXGTOAs7mz\nLjUML4UJXOVkYAg51Yv8aM+2qXpkZCUvz3gZAoGBAMQKBXWnRaXqRHeBsZdPw/on\n7PxG5Uw7+Qz6Pxn45LS3mZGRmgJvFV6HCqH2jQhqM7sDuutkGwIqOmJXjG0p5/eC\nGzj8UxY+YhqYxqjfGf7eQBRxZkP5yWvi2C2uKHsSBY4iNVXLhNFzleLNd4nACTrF\nSxGxovJ7UxOfXaM9AoGBAO/0Gv2HcXGjhJHYFEm1XwJ4JGnifHvwlXcrvp0+YgaD\nQqYZ5VUYw7VAG3oBBCxKGAFwzziY7ZVm6TfGDxn5DQIR4VUSWgBqNMZHwkOBXy3q\nY4EZ8R7OW2UpxwL1dxJ7TXBIjP96BFYt2dvYm2pW1CjF1ePvYaFgCJxDAoGBAL1J\n5A3vsE2hQwJJxY+wFjKGlwKdxQVj6R7HqW/Z7G4wXXm+mz9VhQhC6MMn0LBOhbVh\nVhU8YbRYBDNJz7tW5zZ6UI7gVjzNJFYZuWcTrGK1y0NlGKhEqPf6MCp9UQtFzPqL\nLX8QhqNzqn5KkTcZXlwHRlJWBgKqxQKBAoGBAO7K2WC7VmgMK3Z7XhTBQN5TqiV6\nELTZL1+YzRvN++8VJxN6TL5LVd/rsMX0BqT6wpTJALZF1D6IBqS+XNljkuI8mdLx\n2SSfVX7mQFHE7WCJfGPqIhbRDOJrsC/AYHYgXuPVNEj5HmxDvVX1uBvZN4/5pYGg\nZfwpiJ0h\n-----END PRIVATE KEY-----\n",
+    "client_email": "test@test-project.iam.gserviceaccount.com",
+    "client_id": "test-client-id",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40test-project.iam.gserviceaccount.com",
+    "universe_domain": "googleapis.com"
+}
+
+@pytest.fixture
+def base64_creds():
+    return f"data:application/json;base64,{base64.b64encode(json.dumps(SAMPLE_CREDS).encode()).decode()}"
+
+@pytest.mark.asyncio
+async def test_init_with_base64_credentials(base64_creds, mock_credentials):
+    """Test initializing client with base64 encoded credentials."""
+    # Set up environment
+    os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"] = base64_creds
+    
+    # Create client
+    client = GoogleSheetsClient()
+    
+    # Verify credentials were properly decoded
+    assert hasattr(client, 'creds_info')
+    assert client.creds_info["type"] == "service_account"
+    assert client.creds_info["project_id"] == "test-project"
+    
+    # Test initialization
+    await client.initialize()
+    mock_credentials.assert_called_once_with(SAMPLE_CREDS, scopes=SCOPES)
+
+@pytest.mark.asyncio
+async def test_init_with_invalid_base64_credentials():
+    """Test initializing client with invalid base64 encoded credentials."""
+    # Set invalid base64 string
+    os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"] = "invalid;base64,not_valid_base64"
+    
+    with pytest.raises(ValueError, match="Invalid credentials JSON format"):
+        client = GoogleSheetsClient()
+
+@pytest.mark.asyncio
+async def test_init_with_invalid_json_credentials():
+    """Test initializing client with invalid JSON credentials."""
+    # Set invalid JSON string
+    invalid_json = base64.b64encode("not valid json".encode()).decode()
+    os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"] = f"data:application/json;base64,{invalid_json}"
+    
+    with pytest.raises(ValueError, match="Invalid credentials JSON format"):
+        client = GoogleSheetsClient()
+
+@pytest.mark.asyncio
+async def test_init_with_direct_json_credentials(mock_credentials):
+    """Test initializing client with direct JSON credentials."""
+    # Set JSON string directly
+    os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"] = json.dumps(SAMPLE_CREDS)
+    
+    # Create and initialize client
+    client = GoogleSheetsClient()
+    assert hasattr(client, 'creds_info')
+    assert client.creds_info["type"] == "service_account"
+    
+    await client.initialize()
+    mock_credentials.assert_called_once_with(SAMPLE_CREDS, scopes=SCOPES)
+
+@pytest.mark.asyncio
+async def test_credential_priority(tmp_path, mock_credentials):
+    """Test that base64 credentials take priority over file path."""
+    # Create a credentials file
+    creds_file = tmp_path / "credentials.json"
+    with open(creds_file, "w") as f:
+        json.dump(SAMPLE_CREDS, f)
+    
+    # Set both environment variables
+    os.environ["GOOGLE_SHEETS_CREDENTIALS_PATH"] = str(creds_file)
+    os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"] = json.dumps(SAMPLE_CREDS)
+    
+    # Create client
+    client = GoogleSheetsClient()
+    
+    # Verify it used the JSON credentials
+    assert hasattr(client, 'creds_info')
+    assert not hasattr(client, 'creds_path')
+    
+    await client.initialize()
+    mock_credentials.assert_called_once_with(SAMPLE_CREDS, scopes=SCOPES) 

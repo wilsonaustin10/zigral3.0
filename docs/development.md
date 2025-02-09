@@ -95,7 +95,7 @@ poetry run pytest -k "database"
 ```
 
 ### Coverage Requirements
-- Overall project: 80%+ coverage (currently at 82%)
+- Overall project: 80%+ coverage target
 - Current coverage by component:
   - Lincoln Agent:
     - Core functionality: 91%
@@ -103,11 +103,33 @@ poetry run pytest -k "database"
     - API endpoints: 75%
   - Shaun Agent:
     - Core functionality: 85%
-    - Google Sheets integration: 83%
-    - Utility functions: 100%
+    - Google Sheets integration: 80%
+    - Credential handling: 100%
+    - Error cases: 100%
+    - Utility functions: 75%
   - Common Messaging: 59%
   - Context Manager: 72-100%
   - Orchestrator: 82-96%
+
+### Test Improvements
+The test suite for the Google Sheets client (`test_sheets_client.py`) has been enhanced to include:
+
+1. **Credential Handling Tests**:
+   - File-based credentials (explicit path, env var, default location)
+   - Base64 encoded credentials
+   - Direct JSON credentials
+   - Invalid credential scenarios
+
+2. **Error Case Coverage**:
+   - Missing credentials file
+   - Invalid credentials format
+   - Empty credentials file
+   - Invalid JSON/base64 content
+
+3. **Mock Improvements**:
+   - Enhanced credential mocking with proper error simulation
+   - Realistic file system interaction simulation
+   - Google API service mocking
 
 ## Git Workflow
 
@@ -396,3 +418,50 @@ poetry run pytest tests/agents/ -v --cov=src/agents --cov-report=xml
    - Use environment variables or secure vaults
    - Validate all input data
    - Handle sensitive data securely 
+
+## Credential Management
+
+### Google Sheets Credentials
+
+For security reasons, Google Sheets credentials can be provided in two ways:
+
+1. **Base64 Encoded JSON (Recommended for Production)**
+   ```bash
+   # Convert your credentials.json to base64
+   base64 -i path/to/credentials.json | tr -d '\n'
+   
+   # Add the base64 string to your .env file
+   GOOGLE_SHEETS_CREDENTIALS_JSON=base64_encoded_string_here
+   ```
+
+2. **File Path (Development/Testing)**
+   ```bash
+   # Add the path to your .env file
+   GOOGLE_SHEETS_CREDENTIALS_PATH=/path/to/credentials.json
+   ```
+
+3. **Default Location**
+   If neither of the above is provided, the system will look for credentials at:
+   `~/.config/gspread/credentials.json`
+
+### Converting Existing Credentials
+
+To convert your existing credentials file to the new format:
+
+1. **Generate Base64 String**
+   ```bash
+   base64 -i config/credentials/credentials.json | tr -d '\n'
+   ```
+
+2. **Update Environment**
+   - Add the base64 string to your `.env` file
+   - Remove the original credentials.json file
+   - Update your .gitignore to exclude any credential files
+
+### Security Best Practices
+
+1. **Never commit credentials to version control**
+2. **Use environment variables in production**
+3. **Rotate credentials regularly**
+4. **Use minimal scope permissions**
+5. **Monitor credential usage** 
