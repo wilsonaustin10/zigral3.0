@@ -1,0 +1,48 @@
+FROM kasmweb/desktop:1.14.0
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.12 \
+    python3-pip \
+    python3.12-venv \
+    git \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    POETRY_VERSION=1.7.1 \
+    POETRY_HOME="/opt/poetry" \
+    POETRY_VIRTUALENVS_CREATE=false \
+    VIRTUAL_DESKTOP_MODE=True \
+    ENABLE_VIDEO_STREAM=False
+
+# Install Poetry
+RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV PATH="${POETRY_HOME}/bin:$PATH"
+
+# Set working directory
+WORKDIR /app
+
+# Copy poetry files
+COPY pyproject.toml poetry.lock ./
+
+# Install dependencies
+RUN poetry install --no-interaction --no-ansi --no-root
+
+# Copy application code
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p logs checkpoints workspace
+
+# Set up the workspace directory
+VOLUME /workspace
+
+# Expose Kasm web interface port
+EXPOSE 6901
+
+# Set default command
+CMD ["supervisord", "-c", "/etc/supervisor/supervisord.conf"] 
