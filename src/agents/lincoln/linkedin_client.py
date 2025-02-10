@@ -122,37 +122,159 @@ class LinkedInClient:
         self._page.on("console", lambda msg: logger.error(f"Browser console error: {msg.text}")
                     if msg.type == "error" else None)
 
-    async def login(self) -> bool:
+    async def login(self) -> Dict[str, Any]:
         """
-        Log in to LinkedIn using environment variables or prompt for credentials.
+        Log in to LinkedIn with 2FA support.
         
         Returns:
-            bool: True if login successful, False otherwise
-
-        Raises:
-            ValueError: If LinkedIn credentials are not provided
+            Dict containing login status and 2FA requirements if needed
         """
         try:
-            username = os.getenv("LINKEDIN_USERNAME")
-            password = os.getenv("LINKEDIN_PASSWORD")
-
+            username = os.environ.get("LINKEDIN_USERNAME")
+            password = os.environ.get("LINKEDIN_PASSWORD")
+            
             if not username or not password:
-                self.logger.info("LinkedIn credentials not found in environment variables. Please provide them:")
-                username = input("LinkedIn Username/Email: ")
-                password = input("LinkedIn Password: ")
+                return {
+                    "success": False,
+                    "error": "Missing credentials"
+                }
+            
+            # Start browser if needed
+            if not self._browser:
+                playwright = await async_playwright().start()
+                self._browser = await playwright.chromium.launch()
+                self._page = await self._browser.new_page()
+            
+            # Navigate to LinkedIn
+            await self._page.goto("https://www.linkedin.com/login")
+            
+            # Fill in credentials
+            await self._page.fill("#username", username)
+            await self._page.fill("#password", password)
+            
+            # Click login button
+            await self._page.click("button[type='submit']")
+            
+            # Wait for navigation
+            await asyncio.sleep(2)  # Give time for 2FA check
+            
+            # Check for 2FA
+            twofa_pin_field = await self._page.query_selector("input[name='pin']")
+            twofa_code_field = await self._page.query_selector("input[name='verification-code']")
+            
+            if twofa_pin_field or twofa_code_field:
+                # Determine 2FA type
+                twofa_type = "pin" if twofa_pin_field else "code"
                 
-                if not username or not password:
-                    self.logger.error("Login failed: LinkedIn credentials not found in environment variables")
-                    raise ValueError("LinkedIn credentials not found in environment variables")
-
-            # Simulate login success for testing
-            self.logger.info("Successfully logged in to LinkedIn")
-            self._logged_in = True
-            return True
-
+                # Get 2FA details from page
+                twofa_details = await self._extract_2fa_details()
+                
+                return {
+                    "success": False,
+                    "requires_2fa": True,
+                    "2fa_type": twofa_type,
+                    "2fa_details": twofa_details
+                }
+            
+            # Check if we're logged in
+            try:
+                await self._page.wait_for_selector("nav.global-nav", timeout=5000)
+                self._logged_in = True
+                return {
+                    "success": True,
+                    "requires_2fa": False
+                }
+            except Exception:
+                return {
+                    "success": False,
+                    "error": "Login failed - invalid credentials or unknown error"
+                }
+                
         except Exception as e:
             self.logger.error(f"Login failed: {str(e)}")
-            raise
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def verify_2fa(self, code: str) -> Dict[str, Any]:
+        """
+        Verify 2FA code.
+        
+        Args:
+            code: The 2FA verification code
+            
+        Returns:
+            Dict containing verification status
+        """
+        try:
+            # Find appropriate input field
+            twofa_pin_field = await self._page.query_selector("input[name='pin']")
+            twofa_code_field = await self._page.query_selector("input[name='verification-code']")
+            
+            input_field = twofa_pin_field or twofa_code_field
+            if not input_field:
+                return {
+                    "success": False,
+                    "error": "No 2FA input field found"
+                }
+            
+            # Enter code
+            await input_field.fill(code)
+            
+            # Find and click submit button
+            submit_button = await self._page.query_selector("button[type='submit']")
+            if submit_button:
+                await submit_button.click()
+            
+            # Wait for navigation and check result
+            await asyncio.sleep(2)
+            
+            try:
+                await self._page.wait_for_selector("nav.global-nav", timeout=5000)
+                return {
+                    "success": True
+                }
+            except Exception:
+                return {
+                    "success": False,
+                    "error": "2FA verification failed"
+                }
+                
+        except Exception as e:
+            self.logger.error(f"2FA verification failed: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def _extract_2fa_details(self) -> Dict[str, Any]:
+        """Extract 2FA-related details from the page."""
+        try:
+            # Get verification method text
+            method_text = await self._page.evaluate("""
+                () => {
+                    const methodElem = document.querySelector('.verification-method');
+                    return methodElem ? methodElem.textContent : '';
+                }
+            """)
+            
+            # Get any additional instructions
+            instructions = await self._page.evaluate("""
+                () => {
+                    const instructionsElem = document.querySelector('.verification-instructions');
+                    return instructionsElem ? instructionsElem.textContent : '';
+                }
+            """)
+            
+            return {
+                "method": method_text.strip() if method_text else "Unknown",
+                "instructions": instructions.strip() if instructions else None
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to extract 2FA details: {str(e)}")
+            return {}
 
     async def search_sales_navigator(self, criteria: Dict) -> List[Dict]:
         """
