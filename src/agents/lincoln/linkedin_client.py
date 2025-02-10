@@ -199,40 +199,25 @@ class LinkedInClient:
         Returns:
             Dict containing login status and 2FA requirements if needed
         """
-        # Retrieve credentials
-        if self.__dict__.get('_test_credentials_username') and self.__dict__.get('_test_credentials_password'):
-            creds_username = self.__dict__.get('_test_credentials_username')
-            creds_password = self.__dict__.get('_test_credentials_password')
-        else:
-            if self.allow_dummy_credentials:
-                creds_username = os.environ.get("LINKEDIN_USERNAME") or "dummy_user"
-                creds_password = os.environ.get("LINKEDIN_PASSWORD") or "dummy_pass"
-            else:
-                creds_username = os.environ.get("LINKEDIN_USERNAME")
-                creds_password = os.environ.get("LINKEDIN_PASSWORD")
-                if not creds_username or not creds_username.strip() or not creds_password or not creds_password.strip():
-                    raise ValueError("LinkedIn credentials not found in environment variables")
-        if not (creds_username and creds_password):
+        username = os.environ.get("LINKEDIN_USERNAME")
+        password = os.environ.get("LINKEDIN_PASSWORD")
+        if not username or not password:
             raise ValueError("LinkedIn credentials not found in environment variables")
 
-        page = await self._setup_page()
-        await page.goto("https://www.linkedin.com/login")
-        
-        # Check for 2FA input element; assume selector 'input[name="pin"]'
-        twofa_element = await page.query_selector("input[name='pin']")
-        if twofa_element is not None:
-            details = await self._extract_2fa_details()
-            return {"requires_2fa": True, "2fa_type": "pin", "2fa_details": details}
-        
-        # Check for login error indicator
-        error_indicator = await page.query_selector(".login-error")
-        if error_indicator is not None:
-            self._logged_in = False
-            return {"success": False, "requires_2fa": False, "error": "Login failed due to incorrect credentials"}
-        
-        # Otherwise, simulate successful login
+        if not hasattr(self, '_page') or self._page is None:
+            await self._setup_page()
+
+        await self._page.goto("https://www.linkedin.com/login")
+        await self._page.fill("input[name='session_key']", username)
+        await self._page.fill("input[name='session_password']", password)
+        await self._page.click("button[type='submit']")
+
+        two_fa_element = await self._page.query_selector("input[name='pin']")
+        if two_fa_element:
+            return {'logged_in': False, 'requires_2fa': True}
+
         self._logged_in = True
-        return {"success": True, "requires_2fa": False}
+        return {'logged_in': True, 'requires_2fa': False}
 
     async def verify_2fa(self, code: str) -> Dict[str, Any]:
         """

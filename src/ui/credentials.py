@@ -6,7 +6,7 @@ credentials and handling two-factor authentication interactions.
 """
 
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 import asyncio
@@ -29,7 +29,10 @@ class TwoFactorResponse(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 # Create FastAPI router for credential endpoints
-router = FastAPI()
+router = APIRouter()
+
+# Configuration
+timeout = 300  # Default timeout in seconds
 
 # Store active 2FA requests (in-memory for development, use Redis in production)
 active_2fa_requests: Dict[str, asyncio.Event] = {}
@@ -46,13 +49,15 @@ async def request_2fa(request: TwoFactorRequest) -> Dict[str, Any]:
     Returns:
         Dict containing request status and session ID
     """
+    print("DEBUG: Received /2fa/request for session:", request.session_id)
     # Create an event for this request
     event = asyncio.Event()
     active_2fa_requests[request.session_id] = event
     
     try:
+        print("DEBUG: Waiting for 2FA code submission for session:", request.session_id)
         # Wait for user to provide 2FA code (with timeout)
-        await asyncio.wait_for(event.wait(), timeout=300)  # 5 minute timeout
+        await asyncio.wait_for(event.wait(), timeout=timeout)
         
         # Get and clear the response
         response = twofa_responses.pop(request.session_id)
@@ -65,6 +70,7 @@ async def request_2fa(request: TwoFactorRequest) -> Dict[str, Any]:
     except asyncio.TimeoutError:
         # Clean up on timeout
         active_2fa_requests.pop(request.session_id, None)
+        twofa_responses.pop(request.session_id, None)
         raise HTTPException(
             status_code=408,
             detail="2FA request timed out. Please try again."
@@ -133,12 +139,15 @@ async def websocket_2fa(websocket: WebSocket, session_id: str):
                     "type": "confirmation",
                     "status": "success"
                 })
+                break  # Close connection after successful submission
                 
             elif message.get("type") == "cancel":
                 # Handle cancellation
                 if session_id in active_2fa_requests:
                     event = active_2fa_requests[session_id]
                     event.set()  # This will trigger an error in the main request
+                    active_2fa_requests.pop(session_id, None)
+                    twofa_responses.pop(session_id, None)
                 
                 await websocket.send_json({
                     "type": "confirmation",
@@ -148,10 +157,22 @@ async def websocket_2fa(websocket: WebSocket, session_id: str):
                 
     except WebSocketDisconnect:
         # Clean up if needed
-        pass
+        if session_id in active_2fa_requests:
+            event = active_2fa_requests[session_id]
+            event.set()  # Signal the main request to fail
+            active_2fa_requests.pop(session_id, None)
+            twofa_responses.pop(session_id, None)
     except Exception as e:
         # Log the error and clean up
         print(f"WebSocket error: {str(e)}")
         if session_id in active_2fa_requests:
             event = active_2fa_requests[session_id]
-            event.set()  # Signal the main request to fail 
+            event.set()  # Signal the main request to fail
+            active_2fa_requests.pop(session_id, None)
+            twofa_responses.pop(session_id, None)
+    finally:
+        # Ensure connection is closed
+        try:
+            await websocket.close()
+        except:
+            pass 

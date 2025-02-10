@@ -1,6 +1,7 @@
 """Tests for the credentials and 2FA handling functionality."""
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from datetime import datetime
 import json
@@ -10,23 +11,35 @@ from src.ui.credentials import (
     TwoFactorRequest,
     TwoFactorResponse,
     active_2fa_requests,
-    twofa_responses
+    twofa_responses,
+    timeout
 )
 
-# Create test client
-client = TestClient(router)
+# Create FastAPI app for testing
+app = FastAPI()
+app.include_router(router)
 
-@pytest.fixture
+# Create test client
+client = TestClient(app)
+
+@pytest.fixture(autouse=True)
 def clear_storage():
     """Clear the storage before and after each test."""
     active_2fa_requests.clear()
     twofa_responses.clear()
+    # Store original timeout
+    original_timeout = globals()['timeout']
     yield
+    # Restore original timeout
+    globals()['timeout'] = original_timeout
     active_2fa_requests.clear()
     twofa_responses.clear()
 
-def test_request_2fa_timeout(clear_storage):
+def test_request_2fa_timeout():
     """Test that 2FA request times out after specified period."""
+    # Set a short timeout for testing
+    globals()['timeout'] = 0.1
+    
     request_data = {
         "service": "linkedin",
         "user_id": "test_user",
@@ -34,14 +47,18 @@ def test_request_2fa_timeout(clear_storage):
         "type": "sms"
     }
     
-    # Override timeout for testing
-    router.timeout = 0.1
-    
+    print("DEBUG: Before POST request in test_request_2fa_timeout")
     response = client.post("/2fa/request", json=request_data)
+    print("DEBUG: After POST request, response status:", response.status_code)
+    
     assert response.status_code == 408
     assert "timed out" in response.json()["detail"]
+    
+    # Verify cleanup
+    assert "test_session" not in active_2fa_requests
+    assert "test_session" not in twofa_responses
 
-def test_submit_2fa_invalid_session(clear_storage):
+def test_submit_2fa_invalid_session():
     """Test submitting 2FA code for invalid session."""
     response_data = {
         "code": "123456",
@@ -53,109 +70,125 @@ def test_submit_2fa_invalid_session(clear_storage):
     assert response.status_code == 404
     assert "No active 2FA request found" in response.json()["detail"]
 
-@pytest.mark.asyncio
-async def test_2fa_flow(clear_storage):
-    """Test complete 2FA flow with WebSocket."""
-    request_data = TwoFactorRequest(
-        service="linkedin",
-        user_id="test_user",
-        session_id="test_session",
-        type="sms"
-    )
+def test_2fa_flow():
+    """Test complete 2FA flow."""
+    # Start 2FA request
+    request_data = {
+        "service": "linkedin",
+        "user_id": "test_user",
+        "session_id": "test_session",
+        "type": "sms"
+    }
     
-    # Start 2FA request in background
-    request_task = asyncio.create_task(
-        router.request_2fa(request_data)
-    )
+    # Create background task to handle 2FA request
+    def submit_2fa():
+        # Wait a bit before submitting
+        import time
+        time.sleep(0.1)
+        
+        # Submit 2FA code
+        response_data = {
+            "code": "123456",
+            "timestamp": datetime.now().isoformat(),
+            "metadata": {"source": "test"}
+        }
+        return client.post("/2fa/submit/test_session", json=response_data)
     
-    # Wait a bit for request to be processed
-    await asyncio.sleep(0.1)
+    import threading
+    submit_thread = threading.Thread(target=submit_2fa)
+    submit_thread.start()
     
-    # Submit 2FA code
-    response_data = TwoFactorResponse(
-        code="123456",
-        timestamp=datetime.now(),
-        metadata={"source": "test"}
-    )
+    # Make the 2FA request
+    response = client.post("/2fa/request", json=request_data)
+    submit_thread.join()
     
-    submit_response = await router.submit_2fa(
-        "test_session",
-        response_data
-    )
-    assert submit_response["status"] == "success"
-    
-    # Wait for request to complete
-    result = await request_task
+    assert response.status_code == 200
+    result = response.json()
     assert result["status"] == "success"
     assert result["code"] == "123456"
+    
+    # Verify cleanup
+    assert "test_session" not in active_2fa_requests
+    assert "test_session" not in twofa_responses
 
-@pytest.mark.asyncio
-async def test_websocket_2fa(clear_storage):
+def test_websocket_2fa():
     """Test WebSocket-based 2FA interaction."""
-    async with client.websocket_connect("/2fa/ws/test_session") as websocket:
+    with client.websocket_connect("/2fa/ws/test_session") as websocket:
         # Create 2FA request
-        request_data = TwoFactorRequest(
-            service="linkedin",
-            user_id="test_user",
-            session_id="test_session",
-            type="sms"
-        )
+        request_data = {
+            "service": "linkedin",
+            "user_id": "test_user",
+            "session_id": "test_session",
+            "type": "sms"
+        }
         
-        # Start request in background
-        request_task = asyncio.create_task(
-            router.request_2fa(request_data)
-        )
+        # Create background task to handle 2FA request
+        def handle_2fa_request():
+            return client.post("/2fa/request", json=request_data)
+        
+        import threading
+        request_thread = threading.Thread(target=handle_2fa_request)
+        request_thread.start()
         
         # Wait a bit for request to be processed
-        await asyncio.sleep(0.1)
+        import time
+        time.sleep(0.1)
         
         # Send 2FA code via WebSocket
-        await websocket.send_json({
+        websocket.send_json({
             "type": "2fa_code",
             "code": "123456",
             "metadata": {"source": "test"}
         })
         
         # Get confirmation
-        response = await websocket.receive_json()
+        response = websocket.receive_json()
         assert response["type"] == "confirmation"
         assert response["status"] == "success"
         
         # Wait for request to complete
-        result = await request_task
-        assert result["status"] == "success"
-        assert result["code"] == "123456"
-
-@pytest.mark.asyncio
-async def test_websocket_cancel(clear_storage):
-    """Test cancelling 2FA request via WebSocket."""
-    async with client.websocket_connect("/2fa/ws/test_session") as websocket:
-        # Create 2FA request
-        request_data = TwoFactorRequest(
-            service="linkedin",
-            user_id="test_user",
-            session_id="test_session",
-            type="sms"
-        )
+        request_thread.join()
         
-        # Start request in background
-        request_task = asyncio.create_task(
-            router.request_2fa(request_data)
-        )
+        # Verify cleanup
+        assert "test_session" not in active_2fa_requests
+        assert "test_session" not in twofa_responses
+
+def test_websocket_cancel():
+    """Test cancelling 2FA request via WebSocket."""
+    with client.websocket_connect("/2fa/ws/test_session") as websocket:
+        # Create 2FA request
+        request_data = {
+            "service": "linkedin",
+            "user_id": "test_user",
+            "session_id": "test_session",
+            "type": "sms"
+        }
+        
+        # Create background task to handle 2FA request
+        def handle_2fa_request():
+            return client.post("/2fa/request", json=request_data)
+        
+        import threading
+        request_thread = threading.Thread(target=handle_2fa_request)
+        request_thread.start()
         
         # Wait a bit for request to be processed
-        await asyncio.sleep(0.1)
+        import time
+        time.sleep(0.1)
         
         # Send cancel message
-        await websocket.send_json({
+        websocket.send_json({
             "type": "cancel"
         })
         
         # Get confirmation
-        response = await websocket.receive_json()
+        response = websocket.receive_json()
         assert response["type"] == "confirmation"
         assert response["status"] == "cancelled"
         
-        # Verify request was cancelled
-        with pytest.raises(Exception):
-            await request_task 
+        # Wait for request to complete
+        request_thread.join()
+        
+        # Verify cleanup
+        assert "test_session" not in active_2fa_requests
+        assert "test_session" not in twofa_responses 

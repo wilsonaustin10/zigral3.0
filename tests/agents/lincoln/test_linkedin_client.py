@@ -125,16 +125,14 @@ async def test_login_success(client, mock_page):
 
 
 @pytest.mark.asyncio
-async def test_login_missing_credentials(client, monkeypatch):
+async def test_login_missing_credentials(monkeypatch):
     """Test login with missing credentials."""
-    # Mock input function
-    monkeypatch.setattr('builtins.input', lambda _: '')
-    
     # Clear environment variables
     os.environ.pop("LINKEDIN_USERNAME", None)
     os.environ.pop("LINKEDIN_PASSWORD", None)
 
-    # Attempt to login
+    from src.agents.lincoln.linkedin_client import LinkedInClient
+    client = LinkedInClient()
     with pytest.raises(ValueError, match="LinkedIn credentials not found in environment variables"):
         await client.login()
 
@@ -416,4 +414,165 @@ async def test_collect_prospect_data_extraction_error(client, mock_page):
     mock_page.wait_for_selector = AsyncMock(side_effect=Exception("Element not found"))
     
     with pytest.raises(Exception, match="Element not found"):
-        await client.collect_prospect_data(profile_url) 
+        await client.collect_prospect_data(profile_url)
+
+
+@pytest.fixture
+def mock_page():
+    """Create a mock page object."""
+    page = AsyncMock()
+    
+    # Mock query selectors
+    page.query_selector = AsyncMock()
+    page.query_selector.return_value = None  # Default to no 2FA fields
+    
+    # Mock navigation and element interactions
+    page.goto = AsyncMock()
+    page.fill = AsyncMock()
+    page.click = AsyncMock()
+    page.wait_for_selector = AsyncMock()
+    page.evaluate = AsyncMock(return_value="")
+    
+    return page
+
+
+@pytest.fixture
+def mock_browser():
+    """Create a mock browser object."""
+    browser = AsyncMock()
+    context = AsyncMock()
+    context.new_page = AsyncMock()
+    browser.new_context = AsyncMock(return_value=context)
+    return browser
+
+
+@pytest.fixture
+def mock_playwright():
+    """Create a mock playwright object."""
+    playwright = AsyncMock()
+    chromium = AsyncMock()
+    chromium.launch = AsyncMock()
+    playwright.chromium = chromium
+    return playwright
+
+
+@pytest.fixture
+async def linkedin_client(mock_page, mock_browser, mock_playwright):
+    """Create a LinkedIn client with mocked dependencies."""
+    with patch("playwright.async_api.async_playwright") as mock_pw:
+        mock_pw.return_value.start = AsyncMock(return_value=mock_playwright)
+        mock_playwright.chromium.launch.return_value = mock_browser
+        mock_browser.new_context.return_value.new_page.return_value = mock_page
+        
+        client = LinkedInClient()
+        await client.initialize()
+        yield client
+
+
+@pytest.mark.asyncio
+async def test_login_no_2fa(linkedin_client, mock_page, monkeypatch):
+    """Test successful login without 2FA."""
+    # Set dummy LinkedIn credentials
+    monkeypatch.setenv("LINKEDIN_USERNAME", "dummy_user")
+    monkeypatch.setenv("LINKEDIN_PASSWORD", "dummy_pass")
+    from unittest.mock import AsyncMock
+    # Simulate no 2FA input element
+    mock_page.query_selector = AsyncMock(return_value=None)
+    linkedin_client._page = mock_page
+    result = await linkedin_client.login()
+    mock_page.goto.assert_called_once_with("https://www.linkedin.com/login")
+    assert isinstance(result, dict), 'Expected a dict result'
+    assert result.get('logged_in') is True, 'Login should be successful'
+    assert result.get('requires_2fa') is False, '2FA should not be required'
+
+
+@pytest.mark.asyncio
+async def test_login_with_2fa_pin(linkedin_client, mock_page, monkeypatch):
+    """Test login that requires 2FA PIN."""
+    # Set dummy LinkedIn credentials
+    monkeypatch.setenv("LINKEDIN_USERNAME", "dummy_user")
+    monkeypatch.setenv("LINKEDIN_PASSWORD", "dummy_pass")
+    from unittest.mock import AsyncMock
+    # Ensure that the client's _page is set before monkeypatching
+    linkedin_client._page = mock_page
+    async def fake_query_selector(selector):
+        if "pin" in selector:
+            class DummyElement:
+                async def input_value(self):
+                    return ""
+            return DummyElement()
+        return None
+
+    monkeypatch.setattr(mock_page, 'query_selector', fake_query_selector)
+    result = await linkedin_client.login()
+    # Expect login to indicate 2FA is required
+    assert isinstance(result, dict), 'Expected a dict result'
+    assert result.get('logged_in') is False, 'Login should not complete before 2FA verification'
+    assert result.get('requires_2fa') is True, '2FA should be required'
+
+
+@pytest.mark.asyncio
+async def test_verify_2fa_success(linkedin_client, mock_page, monkeypatch):
+    """Test successful 2FA verification."""
+    # Set dummy credentials and ensure a page is available
+    monkeypatch.setenv("LINKEDIN_USERNAME", "dummy_user")
+    monkeypatch.setenv("LINKEDIN_PASSWORD", "dummy_pass")
+    from unittest.mock import AsyncMock
+    dummy_pin = AsyncMock()
+    dummy_submit = AsyncMock()
+    def qs_side_effect(selector):
+        if selector == "input[name='pin']":
+            return dummy_pin
+        if selector == "button[type='submit']":
+            return dummy_submit
+        return None
+    mock_page.query_selector.side_effect = qs_side_effect
+    linkedin_client._page = mock_page
+    result = await linkedin_client.verify_2fa("123456")
+    assert result["success"] is True
+    dummy_pin.fill.assert_called_once_with("123456")
+    dummy_submit.click.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_verify_2fa_failure(linkedin_client, mock_page, monkeypatch):
+    """Test failed 2FA verification."""
+    # Set dummy credentials and ensure a page is available
+    monkeypatch.setenv("LINKEDIN_USERNAME", "dummy_user")
+    monkeypatch.setenv("LINKEDIN_PASSWORD", "dummy_pass")
+    from unittest.mock import AsyncMock
+    dummy_pin = AsyncMock()
+    dummy_submit = AsyncMock()
+    def qs_side_effect(selector):
+        if selector == "input[name='pin']":
+            return dummy_pin
+        if selector == "button[type='submit']":
+            return dummy_submit
+        return None
+    mock_page.query_selector.side_effect = qs_side_effect
+    linkedin_client._page = mock_page
+    result = await linkedin_client.verify_2fa("000000")
+    assert result["success"] is False
+    assert "Invalid 2FA code" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_extract_2fa_details(linkedin_client, mock_page, monkeypatch):
+    """Test extracting 2FA details from page."""
+    # Set dummy credentials and inject dummy page with evaluate method
+    monkeypatch.setenv("LINKEDIN_USERNAME", "dummy_user")
+    monkeypatch.setenv("LINKEDIN_PASSWORD", "dummy_pass")
+    from unittest.mock import AsyncMock
+    mock_page.evaluate = AsyncMock(side_effect=["Authenticator App", "Enter the code from your authenticator app"])
+    linkedin_client._page = mock_page
+    details = await linkedin_client._extract_2fa_details()
+    assert mock_page.evaluate.call_count == 2
+    assert details["method"] == "Authenticator App"
+    assert details["instructions"] == "Enter the code from your authenticator app"
+
+
+@pytest.fixture
+def linkedin_client_with_success(linkedin_client, monkeypatch):
+    """Fixture to override login method to simulate successful login."""
+    monkeypatch.setattr(linkedin_client, "login", AsyncMock(return_value={"success": True, "requires_2fa": False}))
+    return linkedin_client 

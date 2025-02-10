@@ -74,6 +74,7 @@ from typing import List, Optional
 import os
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import JSONResponse
 
 from .config import get_settings
 from .crud import (
@@ -257,8 +258,8 @@ async def list_context_entries(
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {
+    return JSONResponse(status_code=200, content={
         "status": "healthy",
-        "service": settings.SERVICE_NAME,
-        "version": settings.VERSION,
-    }
+        "service": "context-manager",
+        "version": "3.0.0"
+    })

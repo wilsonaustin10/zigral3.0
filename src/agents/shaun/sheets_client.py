@@ -87,9 +87,9 @@ class GoogleSheetsClient:
         ]
         self._is_initialized = False
         
-        # Try to get credentials from environment first
-        self.creds_json = creds_json or os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
-        
+        # Get creds_json from argument or environment, default to empty string
+        self.creds_json = (creds_json or os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON") or "").strip()
+
         if self.creds_json:
             try:
                 # If credentials are base64 encoded, decode them
@@ -97,7 +97,7 @@ class GoogleSheetsClient:
                     _, b64_creds = self.creds_json.split(';base64,')
                     self.creds_json = base64.b64decode(b64_creds).decode('utf-8')
                 self.creds_info = json.loads(self.creds_json)
-            except (json.JSONDecodeError, ValueError) as e:
+            except Exception as e:
                 raise ValueError(f"Invalid credentials JSON format: {str(e)}")
         else:
             # Fall back to file-based credentials
@@ -106,7 +106,6 @@ class GoogleSheetsClient:
             elif "GOOGLE_SHEETS_CREDENTIALS_PATH" in os.environ:
                 self.creds_path = os.environ["GOOGLE_SHEETS_CREDENTIALS_PATH"]
             else:
-                # Dynamically compute default path using current HOME env variable
                 home_dir = os.environ.get("HOME", str(Path.home()))
                 default_path = Path(home_dir) / ".config" / "gspread" / "credentials.json"
                 if default_path.exists():
