@@ -118,6 +118,7 @@ The application is built incrementally with robust error handling, detailed logg
 - **Lincoln (LinkedIn Agent):**  
   - Automates login, search, and data collection on LinkedIn using Playwright.
   - Captures and sends current GUI state (screenshot/HTML snippet) for validation.
+  - Now includes interactive two-factor authentication support by using dummy page injection and dedicated test fixtures. This setup simulates both scenarios: when 2FA is not required and when a 2FA PIN is expected, ensuring comprehensive testing of the login flow.
 - **Shaun (Google Sheets Agent):** ✅ 
   - Connects to Google Sheets using gspread library ✅
   - Creates and manages prospect spreadsheets ✅
