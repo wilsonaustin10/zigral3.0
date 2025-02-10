@@ -1,5 +1,136 @@
 # Development Guide
 
+## Environment Setup
+
+1. **Python Environment**
+   - Python 3.12 or higher is required
+   - Use Poetry for dependency management
+   ```bash
+   poetry install --with test
+   ```
+
+2. **Credentials Setup**
+
+   ### Google Sheets Credentials
+   The application supports two methods for providing Google Sheets credentials:
+
+   a. Base64 Encoded JSON (Recommended for production)
+   ```bash
+   # In .env file
+   GOOGLE_SHEETS_CREDENTIALS_JSON=data:application/json;base64,<your_base64_encoded_credentials>
+   ```
+
+   b. File-based Credentials
+   ```bash
+   # In .env file
+   GOOGLE_SHEETS_CREDENTIALS_PATH=/path/to/credentials.json
+   ```
+
+   Note: Base64 encoded credentials take precedence over file-based credentials.
+
+3. **Environment Variables**
+   Copy `.env.example` to `.env` and configure:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
+
+## Testing
+
+1. **Running Tests**
+   ```bash
+   # Run all tests
+   poetry run pytest
+
+   # Run specific test files
+   poetry run pytest tests/agents/shaun/test_sheets.py
+   poetry run pytest tests/agents/shaun/test_main.py
+
+   # Run with coverage report
+   poetry run pytest --cov=src --cov-report=term-missing
+   ```
+
+2. **Test Environment**
+   - Tests use mock credentials by default
+   - Integration tests require valid credentials
+   - Set `TESTING=true` for test-specific behavior
+
+3. **Mock Setup**
+   - Use `mock_env_credentials` fixture for Google Sheets tests
+   - Use `mock_rabbitmq_connection` fixture for RabbitMQ tests
+   - Use `mock_sheets_client` fixture for Google Sheets client tests
+
+## Code Style
+
+1. **Formatting**
+   ```bash
+   # Format code
+   poetry run black .
+
+   # Sort imports
+   poetry run isort .
+   ```
+
+2. **Linting**
+   ```bash
+   # Run flake8
+   poetry run flake8
+   ```
+
+## Best Practices
+
+1. **Credential Handling**
+   - Never commit real credentials to version control
+   - Use environment variables for sensitive data
+   - Support both base64 and file-based credentials for flexibility
+
+2. **Error Handling**
+   - Always clean up resources in error cases
+   - Use proper exception handling with specific error types
+   - Log errors with appropriate context
+
+3. **Testing**
+   - Write both unit and integration tests
+   - Use fixtures for common setup
+   - Mock external services appropriately
+   - Test both success and failure cases
+
+4. **Async Code**
+   - Use proper async/await syntax
+   - Handle cleanup in both success and error cases
+   - Use asynccontextmanager for resource management
+
+5. **Logging**
+   - Use structured logging
+   - Include relevant context in log messages
+   - Use appropriate log levels
+
+## Common Issues
+
+1. **Credentials Issues**
+   - Ensure credentials are properly formatted
+   - Check environment variables are set correctly
+   - Verify credentials have required permissions
+
+2. **Test Failures**
+   - Check mock setup is correct
+   - Ensure cleanup is properly handled
+   - Verify async code is properly structured
+
+## Contributing
+
+1. **Pull Requests**
+   - Write clear PR descriptions
+   - Include test coverage
+   - Follow code style guidelines
+   - Update documentation as needed
+
+2. **Code Review**
+   - Review for security issues
+   - Check error handling
+   - Verify test coverage
+   - Ensure documentation is updated
+
 ## Overview
 
 This guide covers development practices, tools, and workflows for the Zigral project.
@@ -214,62 +345,6 @@ The project uses GitHub Actions for continuous integration:
      - development.md: Development guide
      - api.md: API documentation
      - deployment.md: Deployment guide
-
-## Best Practices
-
-1. **Code Style**:
-   - Follow PEP 8 guidelines
-   - Use type hints
-   - Write descriptive docstrings
-   - Keep functions focused and small
-   - Use Pydantic V2 style validators
-   - Address deprecation warnings promptly
-
-2. **Testing**:
-   - Write tests for new features
-   - Maintain high coverage (target: 80%+)
-   - Use meaningful test names
-   - Test edge cases and error conditions
-   - Mock external services appropriately
-   - Use fixtures for common setup
-
-3. **Error Handling**:
-   - Use appropriate exception types
-   - Provide meaningful error messages
-   - Log errors with context
-   - Handle edge cases gracefully
-   - Implement rate limiting where needed
-   - Add robust network error recovery
-
-4. **Logging**:
-   - Use appropriate log levels
-   - Include relevant context
-   - Don't log sensitive information
-   - Use structured logging
-   - Add comprehensive debug logging
-   - Monitor performance metrics
-
-## Troubleshooting
-
-1. **Common Issues**:
-   - Poetry environment issues:
-     ```bash
-     poetry env remove python
-     poetry install
-     ```
-   - Import errors:
-     ```bash
-     poetry run python -c "import sys; print(sys.path)"
-     ```
-   - Database connection issues:
-     ```bash
-     poetry run python -c "from context_manager.database import init_db; import asyncio; asyncio.run(init_db())"
-     ```
-
-2. **Debug Tools**:
-   - pytest -vv for verbose output
-   - pytest --pdb for debugger on failure
-   - PYTHONPATH for import issues 
 
 ## Agent Development
 

@@ -1,22 +1,33 @@
-# Python virtual environment
-venv/
-env/
-.venv/
-
-# Python cache files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Distribution / packaging
-dist/
+*.so
+.Python
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 *.egg-info/
+.installed.cfg
+*.egg
 
-# Environment variables
+# Virtual Environment
 .env
+.venv
+env/
+venv/
+ENV/
 
-# IDE specific files
+# IDE
 .idea/
 .vscode/
 *.swp
@@ -24,22 +35,59 @@ build/
 
 # Logs
 *.log
+logs/
+log/
 
-# Testing
+# Test coverage
 .coverage
+coverage.xml
 htmlcov/
-.pytest_cache/
 
-# Coverage reports
-coverage.xml
+# Credentials
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+*.p7b
+*.p7c
+*.p12
+*.pfx
+credentials.json
+**/credentials/
+.config/gspread/
+zigral-*.json
+google_sheets_creds.json
+*-service-account.json
 
-# OS specific
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Misc
 .DS_Store
-Thumbs.db .env.test
+.env.local
+.env.*.local
 .env.test
-coverage.xml
-.coverage
-.pytest_cache/
-*.pyc
-__pycache__/
+.env.production
+
+# VDI specific
+workspace/
+captures/
+*.webm
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# Database
+*.sqlite
+*.db
+*.sql
+
+# Poetry
+poetry.lock
 
