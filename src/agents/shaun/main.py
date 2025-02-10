@@ -49,17 +49,25 @@ class ShaunAgent:
     
     def __init__(self):
         """Initialize the Shaun agent."""
-        self.sheets_client = GoogleSheetsClient()
-        self.mq_client = RabbitMQClient("shaun")
+        self.sheets_client = None
+        self.mq_client = None
         
     async def initialize(self):
+        """Initialize the agent's clients."""
         try:
+            self.sheets_client = GoogleSheetsClient()
             await self.sheets_client.initialize()
         except Exception as e:
             logger.error("Sheets client initialization failed: %s", e)
             self.sheets_client = None
-        await self.mq_client.initialize()
-        await self.mq_client.subscribe("shaun_commands", self.handle_command)
+
+        try:
+            self.mq_client = RabbitMQClient("shaun")
+            await self.mq_client.initialize()
+            await self.mq_client.subscribe("shaun_commands", self.handle_command)
+        except Exception as e:
+            logger.error("RabbitMQ client initialization failed: %s", e)
+            self.mq_client = None
         
     async def handle_command(self, message):
         """
@@ -142,8 +150,13 @@ class ShaunAgent:
     
     async def cleanup(self):
         """Clean up resources for both Sheets and RabbitMQ clients."""
-        await self.sheets_client.cleanup()
-        await self.mq_client.cleanup()
+        try:
+            if self.sheets_client is not None:
+                await self.sheets_client.cleanup()
+            if self.mq_client is not None:
+                await self.mq_client.cleanup()
+        except Exception as e:
+            logger.error("Error during cleanup: %s", e)
 
 
 @asynccontextmanager

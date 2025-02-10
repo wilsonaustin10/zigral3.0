@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
 from google.oauth2.service_account import Credentials
+import json
 
 from src.agents.shaun.main import app, ShaunAgent, ProspectData
 
@@ -27,13 +28,23 @@ def mock_rabbitmq_connection():
     with patch("src.common.messaging.connect_robust", mock_connect):
         yield connection
 
-@pytest.fixture
-def mock_credentials():
-    """Mock Google credentials."""
-    with patch("src.agents.shaun.sheets_client.Credentials") as mock:
-        creds = MagicMock(spec=Credentials)
-        mock.from_service_account_file.return_value = creds
-        yield mock
+@pytest.fixture(autouse=True)
+def mock_env_credentials(monkeypatch):
+    """Mock environment credentials for tests."""
+    mock_creds = {
+        "type": "service_account",
+        "project_id": "test-project",
+        "private_key_id": "test-key-id",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----",
+        "client_email": "test@test-project.iam.gserviceaccount.com",
+        "client_id": "test-client-id",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40test-project.iam.gserviceaccount.com",
+        "universe_domain": "googleapis.com"
+    }
+    monkeypatch.setenv("GOOGLE_SHEETS_CREDENTIALS_JSON", json.dumps(mock_creds))
 
 @pytest.fixture
 def mock_sheets_client(mock_credentials):

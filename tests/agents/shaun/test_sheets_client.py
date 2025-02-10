@@ -12,6 +12,21 @@ from google.oauth2.service_account import Credentials
 
 from src.agents.shaun.sheets_client import GoogleSheetsClient, SCOPES
 
+# Sample credentials for testing
+SAMPLE_CREDS = {
+    "type": "service_account",
+    "project_id": "test-project",
+    "private_key_id": "test-key-id",
+    "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDFuHJJHAZ+Q0qE\nPOgOb4z+0w2qZpB5wF0+UBzX7Jq4EU5hVegSqzYEBfzqHo5wQEQUZoQOXA0JQhM6\nv4KqrUHQmZtL6QFEHm+n0LsRxwbYwPUE1g9YjOJyqGRqtJF7NXqLZZEgBOxZLJXU\nw/UHvj/vlvGBUZVHlvVgrIqbGQpUBCBh0aBdHhyp6c3NNyGEJz5sJTDUQJEK2FaF\nIJOCLw4L3Kpz0XkRZz1RtYtCGz1POr0p6JJQ7gGwQA9qJE2HnWKV4qGJ3YC7EJH6\nZpYh4QK5WkK1dUJHH3Z8QFxqDR4XxzZJ0SYf9KL3xhvq5C2jQ5UvV1gD0QQZQWOy\nAgMBAAECggEABLURDWVv7CAqL5XmKYeJJHaVW8+HcH4QGj6nXv+4rP7dZK9rGSVr\nX9sZ6j1B6yh/9P6gKkm5QDX+FjbRPQH5xKFVRFH8qG6IqpQGY/o5aNZQ5vTP9nLP\nZH5kZo8Mu7QE8TBxFO+/Hs72FqQOh7dGo1kX8Ir5vAqsqvqCjH8bC6WqcYC0Qg8I\nQE5kHuHGQH5HJWLxEqQf9gYyYNK5cP8hEXEps/p+7CYVlGZQX8D1qZqHrwKpvYOm\nYg1V/9LjVQzBEqKzHXGPQVpvvCXO4UZHNjkPJLm6HpNBvZMH1/l4ckJLSf0vEVwC\nJZMLENPZQkBuKPUv3oGMEQKBgQDFuHJJHAZ+Q0qEPOgOb4z+0w2qZpB5wF0+UBzX\n7Jq4EU5hVegSqzYEBfzqHo5wQEQUZoQOXA0JQhM6v4KqrUHQmZtL6QFEHm+n0LsR\nxwbYwPUE1g9YjOJyqGRqtJF7NXqLZZEgBOxZLJXUw/UHvj/vlvGBUZVHlvVgrIqb\nGQpUBCBh0aBdHhyp6c3NNyGEJz5sJTDUQJEK2FaFIJOCLw4L3Kpz0XkRZz1RtYtC\nGz1POr0p6JJQ7gGwQA9qJE2HnWKV4qGJ3YC7EJH6ZpYh4QK5WkK1dUJHH3Z8QFxq\nDR4XxzZJ0SYf9KL3xhvq5C2jQ5UvV1gD0QQZQWOy",
+    "client_email": "test@test-project.iam.gserviceaccount.com",
+    "client_id": "test-client-id",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40test-project.iam.gserviceaccount.com",
+    "universe_domain": "googleapis.com"
+}
+
 @pytest.fixture(autouse=True)
 def patch_google_credentials(monkeypatch):
     """Mock Google credentials."""
@@ -56,7 +71,10 @@ def mock_gspread():
 def temp_credentials_file(tmp_path, mock_credentials):
     """Create a temporary credentials file."""
     creds_file = tmp_path / "credentials.json"
-    creds_file.write_text(json.dumps(SAMPLE_CREDS, indent=2))
+    # Write the credentials in base64 format
+    creds_json = json.dumps(SAMPLE_CREDS)
+    b64_creds = base64.b64encode(creds_json.encode()).decode()
+    creds_file.write_text(f"data:application/json;base64,{b64_creds}")
     return str(creds_file)
 
 @pytest.fixture
@@ -313,21 +331,6 @@ async def test_execute_command_invalid_action(client, mock_credentials):
     })
     assert result['success'] is False
 
-# Sample credentials with proper format
-SAMPLE_CREDS = {
-    "type": "service_account",
-    "project_id": "test-project",
-    "private_key_id": "test-key-id",
-    "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC9QFxXxbJEvxB8\nZc5LRL4IP4TGXtEVUgJ/5YPrqD3SxqyRR8iJI8L1C9uZKXSNzIIj8O2Ua4bD0fgS\nkX+4wbKjvbqZnDGZz8rGJ7P0/qNRqHN2TD6R9G+XP+kHgPut5PGZwsV4rKxjFYWk\nHlEImhYw9g8P32pK7kQX3j0Vw2lq6WAxpQB3tZsOWZYkw9gJ97ALJoQLnuZxZEeZ\nXJwYuVxnpZXnOfIws+af6Z5qqWf4ptDGvj8PRqKFZRPyixZ5AJJxY7e0UP8cFVN5\nLJwgv5GXtcGZLBQEQfu+Y1K4k9PDLkqm2tcg8yEm/yAB9CGpW0mZIotRqGoqnqG4\n0q3CAgMBAAECggEABQ4Jl1iNvz0KKm8Qg5FGRxGZJGBI7P0y39Sj5Pg8I8Aq3Znk\nzwZ3vQm7gTRpHZPJP4gM6YCw6Xt6Ux5rvHVAVYH+kZHiN0yjEj5r5WcH8E8sN0Jm\nk3UhB7Q9yP0xGjOF6ewJZpNtv4YLDhzhp5VhvwqQ9p5yCXl7yEBBQa0JUDwjFQyR\n1Y4rWGUcOG1GKJ6kE+PqoIWHLzDjr8wX1hk9MNy8LH6HFgQfnPdH5zkqoGp1fL+B\n0YWkzKJ2H5x+exZMhkBXPCwCsbEyEVLO9mZkJ4QKGKBUHaR/v+QpR8dXGTOAs7mz\nLjUML4UJXOVkYAg51Yv8aM+2qXpkZCUvz3gZAoGBAMQKBXWnRaXqRHeBsZdPw/on\n7PxG5Uw7+Qz6Pxn45LS3mZGRmgJvFV6HCqH2jQhqM7sDuutkGwIqOmJXjG0p5/eC\nGzj8UxY+YhqYxqjfGf7eQBRxZkP5yWvi2C2uKHsSBY4iNVXLhNFzleLNd4nACTrF\nSxGxovJ7UxOfXaM9AoGBAO/0Gv2HcXGjhJHYFEm1XwJ4JGnifHvwlXcrvp0+YgaD\nQqYZ5VUYw7VAG3oBBCxKGAFwzziY7ZVm6TfGDxn5DQIR4VUSWgBqNMZHwkOBXy3q\nY4EZ8R7OW2UpxwL1dxJ7TXBIjP96BFYt2dvYm2pW1CjF1ePvYaFgCJxDAoGBAL1J\n5A3vsE2hQwJJxY+wFjKGlwKdxQVj6R7HqW/Z7G4wXXm+mz9VhQhC6MMn0LBOhbVh\nVhU8YbRYBDNJz7tW5zZ6UI7gVjzNJFYZuWcTrGK1y0NlGKhEqPf6MCp9UQtFzPqL\nLX8QhqNzqn5KkTcZXlwHRlJWBgKqxQKBAoGBAO7K2WC7VmgMK3Z7XhTBQN5TqiV6\nELTZL1+YzRvN++8VJxN6TL5LVd/rsMX0BqT6wpTJALZF1D6IBqS+XNljkuI8mdLx\n2SSfVX7mQFHE7WCJfGPqIhbRDOJrsC/AYHYgXuPVNEj5HmxDvVX1uBvZN4/5pYGg\nZfwpiJ0h\n-----END PRIVATE KEY-----\n",
-    "client_email": "test@test-project.iam.gserviceaccount.com",
-    "client_id": "test-client-id",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40test-project.iam.gserviceaccount.com",
-    "universe_domain": "googleapis.com"
-}
-
 @pytest.fixture
 def base64_creds():
     return f"data:application/json;base64,{base64.b64encode(json.dumps(SAMPLE_CREDS).encode()).decode()}"
@@ -403,4 +406,25 @@ async def test_credential_priority(tmp_path, mock_credentials):
     assert not hasattr(client, 'creds_path')
     
     await client.initialize()
-    mock_credentials.assert_called_once_with(SAMPLE_CREDS, scopes=SCOPES) 
+    mock_credentials.assert_called_once_with(SAMPLE_CREDS, scopes=SCOPES)
+
+@pytest.fixture(autouse=True)
+def mock_env_credentials(monkeypatch):
+    """Mock environment credentials for tests."""
+    mock_creds = {
+        "type": "service_account",
+        "project_id": "test-project",
+        "private_key_id": "test-key-id",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDFuHJJHAZ+Q0qE\nPOgOb4z+0w2qZpB5wF0+UBzX7Jq4EU5hVegSqzYEBfzqHo5wQEQUZoQOXA0JQhM6\nv4KqrUHQmZtL6QFEHm+n0LsRxwbYwPUE1g9YjOJyqGRqtJF7NXqLZZEgBOxZLJXU\nw/UHvj/vlvGBUZVHlvVgrIqbGQpUBCBh0aBdHhyp6c3NNyGEJz5sJTDUQJEK2FaF\nIJOCLw4L3Kpz0XkRZz1RtYtCGz1POr0p6JJQ7gGwQA9qJE2HnWKV4qGJ3YC7EJH6\nZpYh4QK5WkK1dUJHH3Z8QFxqDR4XxzZJ0SYf9KL3xhvq5C2jQ5UvV1gD0QQZQWOy\nAgMBAAECggEABLURDWVv7CAqL5XmKYeJJHaVW8+HcH4QGj6nXv+4rP7dZK9rGSVr\nX9sZ6j1B6yh/9P6gKkm5QDX+FjbRPQH5xKFVRFH8qG6IqpQGY/o5aNZQ5vTP9nLP\nZH5kZo8Mu7QE8TBxFO+/Hs72FqQOh7dGo1kX8Ir5vAqsqvqCjH8bC6WqcYC0Qg8I\nQE5kHuHGQH5HJWLxEqQf9gYyYNK5cP8hEXEps/p+7CYVlGZQX8D1qZqHrwKpvYOm\nYg1V/9LjVQzBEqKzHXGPQVpvvCXO4UZHNjkPJLm6HpNBvZMH1/l4ckJLSf0vEVwC\nJZMLENPZQkBuKPUv3oGMEQKBgQDFuHJJHAZ+Q0qEPOgOb4z+0w2qZpB5wF0+UBzX\n7Jq4EU5hVegSqzYEBfzqHo5wQEQUZoQOXA0JQhM6v4KqrUHQmZtL6QFEHm+n0LsR\nxwbYwPUE1g9YjOJyqGRqtJF7NXqLZZEgBOxZLJXUw/UHvj/vlvGBUZVHlvVgrIqb\nGQpUBCBh0aBdHhyp6c3NNyGEJz5sJTDUQJEK2FaFIJOCLw4L3Kpz0XkRZz1RtYtC\nGz1POr0p6JJQ7gGwQA9qJE2HnWKV4qGJ3YC7EJH6ZpYh4QK5WkK1dUJHH3Z8QFxq\nDR4XxzZJ0SYf9KL3xhvq5C2jQ5UvV1gD0QQZQWOy",
+        "client_email": "test@test-project.iam.gserviceaccount.com",
+        "client_id": "test-client-id",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40test-project.iam.gserviceaccount.com",
+        "universe_domain": "googleapis.com"
+    }
+    # Base64 encode the credentials
+    creds_json = json.dumps(mock_creds)
+    b64_creds = base64.b64encode(creds_json.encode()).decode()
+    monkeypatch.setenv("GOOGLE_SHEETS_CREDENTIALS_JSON", f"data:application/json;base64,{b64_creds}") 
