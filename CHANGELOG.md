@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced cleanup functionality for both success and error cases
 - Updated test suite to use standardized mock credentials
 - Refactored Google Sheets client initialization process
+- Updated LinkedIn client tests to simulate interactive 2FA handling using dummy page injection. This ensures reliable testing of scenarios with and without 2FA requirements.
 
 ### Fixed
 - Test failures related to mock credentials
