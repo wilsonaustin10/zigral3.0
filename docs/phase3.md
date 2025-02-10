@@ -97,6 +97,7 @@ KASM_API_URL=https://kasm.your-domain.com
 - [x] Environment variable configuration
 - [x] Secure credential storage
 - [x] Interactive 2FA handling
+- Resolved merge conflict in login() method: now properly fetches credentials, fills the login form, and distinguishes 2FA requirements, returning {'logged_in': True, 'requires_2fa': False} on success or {'logged_in': False, 'requires_2fa': True} when 2FA is required.
 
 **2.2.D. Implement Reinforcement Learning (RL) and HITL** 🚧
 - [ ] Feedback collection system

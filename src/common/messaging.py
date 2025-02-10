@@ -10,10 +10,13 @@ import os
 from typing import Any, Callable, Dict, Optional
 import logging
 from functools import partial
+import asyncio
 
 import aio_pika
 from aio_pika import Message, connect_robust, ExchangeType
 from aio_pika.abc import AbstractIncomingMessage
+import aiormq
+from aiormq.exceptions import AMQPConnectionError
 
 from orchestrator.logger import get_logger
 
@@ -71,7 +74,18 @@ class RabbitMQClient:
             
             # Connect to RabbitMQ
             self.logger.info("Connecting to RabbitMQ at %s", rabbitmq_url)
-            self.connection = await self._connect_func(rabbitmq_url)
+            retries = 5
+            delay = 3
+            for attempt in range(1, retries + 1):
+                try:
+                    self.connection = await self._connect_func(rabbitmq_url)
+                    self.logger.info("Connected to RabbitMQ on attempt %d", attempt)
+                    break
+                except aiormq.exceptions.AMQPConnectionError as e:
+                    self.logger.warning("Attempt %d: Failed to connect to RabbitMQ: %s", attempt, str(e))
+                    if attempt == retries:
+                        raise e
+                    await asyncio.sleep(delay)
             
             # Create channel
             self.logger.debug("Creating RabbitMQ channel")
@@ -92,7 +106,7 @@ class RabbitMQClient:
             self.initialized = True
             self.logger.info("RabbitMQ client initialized successfully for %s", self.service_name)
             
-        except aio_pika.AMQPConnectionError as e:
+        except aiormq.exceptions.AMQPConnectionError as e:
             self.logger.error("Failed to connect to RabbitMQ: %s", str(e))
             raise ConnectionError(f"Failed to connect to RabbitMQ: {str(e)}")
         except Exception as e:

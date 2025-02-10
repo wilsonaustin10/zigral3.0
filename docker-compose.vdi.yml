@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   kasm:
+    platform: linux/amd64
     image: kasmweb/desktop:1.14.0
     ports:
       - "6901:6901"  # Kasm web interface
@@ -24,12 +25,16 @@ services:
     depends_on:
       - kasm
       - postgres
+      - rabbitmq
     environment:
+      - SERVICE_NAME=orchestrator
       - VIRTUAL_DESKTOP_MODE=True
       - DATABASE_URL=postgresql://user:password@postgres:5432/zigral
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - DEBUG=True
       - LOG_LEVEL=DEBUG
+      - PYTHONPATH=/app/src
     networks:
       - zigral_network
 
@@ -51,8 +56,22 @@ services:
     networks:
       - zigral_network
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - zigral_network
+
 volumes:
   postgres_data:
+  rabbitmq_data:
 
 networks:
   zigral_network:
