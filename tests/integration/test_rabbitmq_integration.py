@@ -1,7 +1,7 @@
 import asyncio
 import json
 import pytest
-from src/common/messaging import RabbitMQClient
+from src.common.messaging import RabbitMQClient
 
 
 @pytest.mark.asyncio
