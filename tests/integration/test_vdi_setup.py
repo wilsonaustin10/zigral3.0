@@ -87,7 +87,7 @@ def test_kasm_container_starts():
         container = docker_client.containers.run(
             "kasmweb/desktop:1.14.0",
             detach=True,
-            ports={'6901/tcp': 6901},  # Explicitly map to port 6901
+            ports={'6901/tcp': 6902},  # Map container port 6901 to host port 6902
             environment={
                 'VNC_PW': password,
                 'VNC_UN': username,
@@ -128,7 +128,7 @@ def test_kasm_container_starts():
                 # Try to connect to the web interface
                 print("Attempting to connect to web interface...")
                 response = requests.get(
-                    'https://localhost:6901',
+                    'https://localhost:6902',  # Updated port number
                     verify=False,
                     timeout=5,
                     headers=headers
@@ -164,7 +164,7 @@ def test_kasm_container_starts():
         # Final assertions
         assert container.status == "running", "Container should be running"
         response = requests.get(
-            "https://localhost:6901",
+            "https://localhost:6902",  # Updated port number
             verify=False,
             headers=headers
         )

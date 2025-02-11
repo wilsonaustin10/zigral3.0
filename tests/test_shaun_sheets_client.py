@@ -50,7 +50,7 @@ async def test_initialize_success(tmp_path):
         "type": "service_account",
         "project_id": "test-project",
         "private_key_id": "test-key-id",
-        "private_key": "test-private-key",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC9QFbDLpD5Zyqx\n-----END PRIVATE KEY-----\n",
         "client_email": "test@test-project.iam.gserviceaccount.com",
         "client_id": "test-client-id",
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
@@ -64,7 +64,8 @@ async def test_initialize_success(tmp_path):
     
     # Mock the Credentials class
     mock_creds = MockCredentials()
-    with patch('google.oauth2.service_account.Credentials.from_service_account_file', return_value=mock_creds):
+    with patch('google.oauth2.service_account.Credentials.from_service_account_info', return_value=mock_creds), \
+         patch('google.oauth2.service_account.Credentials.from_service_account_file', return_value=mock_creds):
         client = GoogleSheetsClient(creds_path=str(file_path))
         await client.initialize()
         assert client.client is not None
