@@ -7,7 +7,31 @@ and credential handling functionality.
 
 import pytest
 import json
+from unittest.mock import patch, MagicMock
+from google.auth.credentials import Credentials
 from src.agents.shaun.sheets_client import GoogleSheetsClient
+
+
+class MockCredentials(Credentials):
+    """Mock credentials class for testing."""
+    def refresh(self, request):
+        pass
+
+    @property
+    def expired(self):
+        return False
+
+    @property
+    def valid(self):
+        return True
+
+    @property
+    def token(self):
+        return "test_token"
+
+    @token.setter
+    def token(self, value):
+        pass
 
 
 @pytest.mark.asyncio
@@ -26,7 +50,7 @@ async def test_initialize_success(tmp_path):
         "type": "service_account",
         "project_id": "test-project",
         "private_key_id": "test-key-id",
-        "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDFuHJJHAZ+Q0qE\nPOgOb4z+0w2qZpB5wF0+UBzX7Jq4EU5hVegSqzYEBfzqHo5wQEQUZoQOXA0JQhM6\nv4KqrUHQmZtL6QFEHm+n0LsRxwbYwPUE1g9YjOJyqGRqtJF7NXqLZZEgBOxZLJXU\nw/UHvj/vlvGBUZVHlvVgrIqbGQpUBCBh0aBdHhyp6c3NNyGEJz5sJTDUQJEK2FaF\nIJOCLw4L3Kpz0XkRZz1RtYtCGz1POr0p6JJQ7gGwQA9qJE2HnWKV4qGJ3YC7EJH6\nZpYh4QK5WkK1dUJHH3Z8QFxqDR4XxzZJ0SYf9KL3xhvq5C2jQ5UvV1gD0QQZQWOy\nAgMBAAECggEABLURDWVv7CAqL5XmKYeJJHaVW8+HcH4QGj6nXv+4rP7dZK9rGSVr\nX9sZ6j1B6yh/9P6gKkm5QDX+FjbRPQH5xKFVRFH8qG6IqpQGY/o5aNZQ5vTP9nLP\nZH5kZo8Mu7QE8TBxFO+/Hs72FqQOh7dGo1kX8Ir5vAqsqvqCjH8bC6WqcYC0Qg8I\nQE5kHuHGQH5HJWLxEqQf9gYyYNK5cP8hEXEps/p+7CYVlGZQX8D1qZqHrwKpvYOm\nYg1V/9LjVQzBEqKzHXGPQVpvvCXO4UZHNjkPJLm6HpNBvZMH1/l4ckJLSf0vEVwC\nJZMLENPZQkBuKPUv3oGMEQKBgQDFuHJJHAZ+Q0qEPOgOb4z+0w2qZpB5wF0+UBzX\n7Jq4EU5hVegSqzYEBfzqHo5wQEQUZoQOXA0JQhM6v4KqrUHQmZtL6QFEHm+n0LsR\nxwbYwPUE1g9YjOJyqGRqtJF7NXqLZZEgBOxZLJXUw/UHvj/vlvGBUZVHlvVgrIqb\nGQpUBCBh0aBdHhyp6c3NNyGEJz5sJTDUQJEK2FaFIJOCLw4L3Kpz0XkRZz1RtYtC\nGz1POr0p6JJQ7gGwQA9qJE2HnWKV4qGJ3YC7EJH6ZpYh4QK5WkK1dUJHH3Z8QFxq\nDR4XxzZJ0SYf9KL3xhvq5C2jQ5UvV1gD0QQZQWOyAgMBAAECggEABLURDWVv7CAq\nL5XmKYeJJHaVW8+HcH4QGj6nXv+4rP7dZK9rGSVrX9sZ6j1B6yh/9P6gKkm5QDX+\nFjbRPQH5xKFVRFH8qG6IqpQGY/o5aNZQ5vTP9nLPZH5kZo8Mu7QE8TBxFO+/Hs72\nFqQOh7dGo1kX8Ir5vAqsqvqCjH8bC6WqcYC0Qg8IQE5kHuHGQH5HJWLxEqQf9gYy\nYNK5cP8hEXEps/p+7CYVlGZQX8D1qZqHrwKpvYOmYg1V/9LjVQzBEqKzHXGPQVpv\nvCXO4UZHNjkPJLm6HpNBvZMH1/l4ckJLSf0vEVwCJZMLENPZQkBuKPUv3oGMEQKB\ngQDFuHJJHAZ+Q0qEPOgOb4z+0w2qZpB5wF0+UBzX7Jq4EU5hVegSqzYEBfzqHo5w\nQEQUZoQOXA0JQhM6v4KqrUHQmZtL6QFEHm+n0LsRxwbYwPUE1g9YjOJyqGRqtJF7\nNXqLZZEgBOxZLJXUw/UHvj/vlvGBUZVHlvVgrIqbGQpUBCBh0aBdHhyp6c3NNyGE\nJz5sJTDUQJEK2FaFIJOCLw4L3Kpz0XkRZz1RtYtCGz1POr0p6JJQ7gGwQA9qJE2H\nnWKV4qGJ3YC7EJH6ZpYh4QK5WkK1dUJHH3Z8QFxqDR4XxzZJ0SYf9KL3xhvq5C2j\nQ5UvV1gD0QQZQWOy\n-----END PRIVATE KEY-----",
+        "private_key": "test-private-key",
         "client_email": "test@test-project.iam.gserviceaccount.com",
         "client_id": "test-client-id",
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
@@ -38,9 +62,12 @@ async def test_initialize_success(tmp_path):
     file_path = tmp_path / "creds.json"
     file_path.write_text(json.dumps(valid_creds))
     
-    client = GoogleSheetsClient(creds_path=str(file_path))
-    await client.initialize()
-    assert client.client is not None
+    # Mock the Credentials class
+    mock_creds = MockCredentials()
+    with patch('google.oauth2.service_account.Credentials.from_service_account_file', return_value=mock_creds):
+        client = GoogleSheetsClient(creds_path=str(file_path))
+        await client.initialize()
+        assert client.client is not None
 
 
 @pytest.mark.asyncio
@@ -74,5 +101,5 @@ async def test_initialize_invalid_json(tmp_path):
     invalid_file.write_text("invalid json content")
     
     client = GoogleSheetsClient(creds_path=str(invalid_file))
-    with pytest.raises(json.JSONDecodeError):
+    with pytest.raises(ValueError):
         await client.initialize() 

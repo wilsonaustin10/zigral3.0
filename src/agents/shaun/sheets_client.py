@@ -86,30 +86,30 @@ class GoogleSheetsClient:
             'Last Updated'
         ]
         self._is_initialized = False
-        
-        # Get creds_json from argument or environment, default to empty string
-        self.creds_json = (creds_json or os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON") or "").strip()
+        self._creds_path = None
+        self._creds_info = None
 
-        if self.creds_json:
+        # Get creds_json from argument or environment
+        if creds_json:
             try:
                 # If credentials are base64 encoded, decode them
-                if ';base64,' in self.creds_json:
-                    _, b64_creds = self.creds_json.split(';base64,')
-                    self.creds_json = base64.b64decode(b64_creds).decode('utf-8')
-                self.creds_info = json.loads(self.creds_json)
+                if ';base64,' in creds_json:
+                    _, b64_creds = creds_json.split(';base64,')
+                    creds_json = base64.b64decode(b64_creds).decode('utf-8')
+                self._creds_info = json.loads(creds_json)
             except Exception as e:
                 raise ValueError(f"Invalid credentials JSON format: {str(e)}")
         else:
             # Fall back to file-based credentials
             if creds_path:
-                self.creds_path = str(Path(creds_path).resolve())
+                self._creds_path = str(Path(creds_path).resolve())
             elif "GOOGLE_SHEETS_CREDENTIALS_PATH" in os.environ:
-                self.creds_path = os.environ["GOOGLE_SHEETS_CREDENTIALS_PATH"]
+                self._creds_path = os.environ["GOOGLE_SHEETS_CREDENTIALS_PATH"]
             else:
                 home_dir = os.environ.get("HOME", str(Path.home()))
                 default_path = Path(home_dir) / ".config" / "gspread" / "credentials.json"
                 if default_path.exists():
-                    self.creds_path = str(default_path.resolve())
+                    self._creds_path = str(default_path.resolve())
                 else:
                     raise FileNotFoundError(
                         "No credentials found. Please provide either:\n"
@@ -118,24 +118,52 @@ class GoogleSheetsClient:
                         "3. credentials.json in ~/.config/gspread/"
                     )
 
+    @property
+    def creds_path(self) -> Optional[str]:
+        """Get the credentials file path."""
+        return self._creds_path
+
+    @creds_path.setter
+    def creds_path(self, value: str):
+        """Set the credentials file path."""
+        self._creds_path = value
+
+    @property
+    def creds_info(self) -> Optional[Dict[str, Any]]:
+        """Get the credentials info."""
+        return self._creds_info
+
+    @creds_info.setter
+    def creds_info(self, value: Dict[str, Any]):
+        """Set the credentials info."""
+        self._creds_info = value
+
     async def initialize(self):
         """Initialize the Google Sheets client with credentials."""
         if self._is_initialized:
             return
 
         try:
-            if hasattr(self, 'creds_info'):
+            if self._creds_info is not None:
                 # Use credentials from JSON
-                creds = Credentials.from_service_account_info(
-                    self.creds_info,
-                    scopes=SCOPES
-                )
+                try:
+                    creds = Credentials.from_service_account_info(
+                        self._creds_info,
+                        scopes=SCOPES
+                    )
+                except ValueError as e:
+                    raise ValueError(f"Invalid credentials format: {str(e)}")
             else:
                 # Use credentials from file
-                creds = Credentials.from_service_account_file(
-                    self.creds_path,
-                    scopes=SCOPES
-                )
+                if not self._creds_path or not Path(self._creds_path).exists():
+                    raise FileNotFoundError("Credentials file not found")
+                try:
+                    creds = Credentials.from_service_account_file(
+                        self._creds_path,
+                        scopes=SCOPES
+                    )
+                except ValueError as e:
+                    raise ValueError("Invalid credentials file")
 
             self.client = self._gs_authorize(creds)
             self._is_initialized = True

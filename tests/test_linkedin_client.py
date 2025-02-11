@@ -79,7 +79,9 @@ async def test_login_success(linkedin_client):
     os.environ['LINKEDIN_USERNAME'] = 'test@example.com'
     os.environ['LINKEDIN_PASSWORD'] = 'test_password'
     result = await linkedin_client.login()
-    assert result is True
+    assert isinstance(result, dict)
+    assert result.get('logged_in') is True
+    assert result.get('requires_2fa') is False
 
 
 @pytest.mark.asyncio
