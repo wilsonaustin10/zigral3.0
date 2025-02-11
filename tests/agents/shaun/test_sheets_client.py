@@ -106,6 +106,7 @@ async def test_init_with_creds_path():
 async def test_init_with_env_var(monkeypatch):
     """Test initializing with credentials path from environment variable."""
     monkeypatch.setenv("GOOGLE_SHEETS_CREDENTIALS_PATH", "/env/path/credentials.json")
+    monkeypatch.delenv("GOOGLE_SHEETS_CREDENTIALS_JSON", raising=False)
     client = GoogleSheetsClient()
     assert client.creds_path == "/env/path/credentials.json"
 
@@ -123,6 +124,9 @@ async def test_init_with_default_location(tmp_path):
         json.dump(SAMPLE_CREDS, f)
     
     with patch.dict(os.environ, {"HOME": str(mock_home)}):
+        # Ensure no JSON credentials env var interferes
+        if "GOOGLE_SHEETS_CREDENTIALS_JSON" in os.environ:
+            del os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"]
         client = GoogleSheetsClient()
         assert client.creds_path == str(default_path.resolve())
 

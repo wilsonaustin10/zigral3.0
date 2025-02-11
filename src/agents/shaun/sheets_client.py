@@ -10,6 +10,7 @@ import asyncio
 import json
 import os
 import base64
+import binascii
 from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -68,7 +69,7 @@ class GoogleSheetsClient:
 
         Args:
             creds_path (Optional[str]): Path to the Google Sheets credentials file.
-            creds_json (Optional[str]): Base64 encoded JSON string of credentials.
+            creds_json (Optional[str]): Base64 encoded JSON string or direct JSON string of credentials.
                 If provided, this takes precedence over creds_path.
         """
         self.client: Optional[gspread.Client] = None
@@ -89,54 +90,72 @@ class GoogleSheetsClient:
         self._creds_path = None
         self._creds_info = None
 
-        # Get creds_json from argument or environment
-        if creds_json:
-            try:
-                # If credentials are base64 encoded, decode them
-                if ';base64,' in creds_json:
-                    _, b64_creds = creds_json.split(';base64,')
-                    creds_json = base64.b64decode(b64_creds).decode('utf-8')
-                self._creds_info = json.loads(creds_json)
-            except Exception as e:
-                raise ValueError(f"Invalid credentials JSON format: {str(e)}")
+        # New credentials ordering:
+        if (creds_json and creds_json.strip()):
+            self._process_json_credentials(creds_json)
+        elif (creds_path is not None and creds_path.strip()):
+            self._creds_path = creds_path
+        elif ((creds_path is None or not creds_path.strip()) and "GOOGLE_SHEETS_CREDENTIALS_JSON" in os.environ and os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"].strip()):
+            self._process_json_credentials(os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"])
+        elif ((creds_path is None or not creds_path.strip()) and "GOOGLE_SHEETS_CREDENTIALS_PATH" in os.environ and os.environ["GOOGLE_SHEETS_CREDENTIALS_PATH"].strip()):
+            self._creds_path = os.environ["GOOGLE_SHEETS_CREDENTIALS_PATH"]
         else:
-            # Fall back to file-based credentials
-            if creds_path:
-                self._creds_path = str(Path(creds_path).resolve())
-            elif "GOOGLE_SHEETS_CREDENTIALS_PATH" in os.environ:
-                self._creds_path = os.environ["GOOGLE_SHEETS_CREDENTIALS_PATH"]
+            home_dir = os.environ.get("HOME", str(Path.home()))
+            default_path = Path(home_dir) / ".config" / "gspread" / "credentials.json"
+            if default_path.exists():
+                self._creds_path = str(default_path)
+
+        # Validate that we have either credentials info or a path
+        if not self._creds_info and not self._creds_path:
+            raise FileNotFoundError(
+                "No credentials found. Please provide either:\n"
+                "1. Valid JSON credentials string (base64 encoded or direct)\n"
+                "2. Path to credentials file\n"
+                "3. GOOGLE_SHEETS_CREDENTIALS_PATH environment variable\n"
+                "4. credentials.json in ~/.config/gspread/"
+            )
+
+    def _process_json_credentials(self, creds_json: str) -> None:
+        """Process JSON credentials string and set _creds_info if valid."""
+        try:
+            # Check if credentials are base64 encoded
+            if ';base64,' in creds_json:
+                try:
+                    _, b64_creds = creds_json.split(';base64,')
+                    decoded_json = base64.b64decode(b64_creds).decode('utf-8')
+                    creds_data = json.loads(decoded_json)
+                except (binascii.Error, json.JSONDecodeError) as e:
+                    raise ValueError("Invalid credentials JSON format")
             else:
-                home_dir = os.environ.get("HOME", str(Path.home()))
-                default_path = Path(home_dir) / ".config" / "gspread" / "credentials.json"
-                if default_path.exists():
-                    self._creds_path = str(default_path.resolve())
-                else:
-                    raise FileNotFoundError(
-                        "No credentials found. Please provide either:\n"
-                        "1. GOOGLE_SHEETS_CREDENTIALS_JSON environment variable with base64 encoded credentials\n"
-                        "2. GOOGLE_SHEETS_CREDENTIALS_PATH environment variable with path to credentials file\n"
-                        "3. credentials.json in ~/.config/gspread/"
-                    )
+                # Try parsing as direct JSON
+                try:
+                    creds_data = json.loads(creds_json)
+                except json.JSONDecodeError as e:
+                    raise ValueError("Invalid credentials JSON format")
 
-    @property
-    def creds_path(self) -> Optional[str]:
-        """Get the credentials file path."""
-        return self._creds_path
+            # Validate required fields in credentials
+            required_fields = ['type', 'project_id', 'private_key', 'client_email']
+            if not all(field in creds_data for field in required_fields):
+                raise ValueError("Invalid credentials JSON format")
 
-    @creds_path.setter
-    def creds_path(self, value: str):
-        """Set the credentials file path."""
-        self._creds_path = value
+            self._creds_info = creds_data
+            self._creds_path = None  # Clear the path when using JSON credentials
+
+        except Exception as e:
+            self.logger.error(f"Failed to parse credentials JSON: {str(e)}")
+            raise
 
     @property
     def creds_info(self) -> Optional[Dict[str, Any]]:
         """Get the credentials info."""
         return self._creds_info
 
-    @creds_info.setter
-    def creds_info(self, value: Dict[str, Any]):
-        """Set the credentials info."""
-        self._creds_info = value
+    @property
+    def creds_path(self) -> Optional[str]:
+        """Get the credentials file path. Not available when using JSON credentials."""
+        if self._creds_info is not None:
+            raise AttributeError("creds_path not available when using JSON credentials")
+        return self._creds_path
 
     async def initialize(self):
         """Initialize the Google Sheets client with credentials."""
@@ -152,17 +171,26 @@ class GoogleSheetsClient:
                         scopes=SCOPES
                     )
                 except ValueError as e:
-                    raise ValueError(f"Invalid credentials format: {str(e)}")
+                    raise ValueError("Invalid credentials JSON format")
             else:
                 # Use credentials from file
                 if not self._creds_path or not Path(self._creds_path).exists():
                     raise FileNotFoundError("Credentials file not found")
                 try:
-                    creds = Credentials.from_service_account_file(
-                        self._creds_path,
+                    with open(self._creds_path, 'r') as f:
+                        content = f.read()
+                    if content.startswith("data:") and ";base64," in content:
+                        _, b64_creds = content.split(";base64,", 1)
+                        decoded_json = base64.b64decode(b64_creds).decode('utf-8')
+                        creds_data = json.loads(decoded_json)
+                    else:
+                        creds_data = json.loads(content)
+
+                    creds = Credentials.from_service_account_info(
+                        creds_data,
                         scopes=SCOPES
                     )
-                except ValueError as e:
+                except (ValueError, json.JSONDecodeError) as e:
                     raise ValueError("Invalid credentials file")
 
             self.client = self._gs_authorize(creds)

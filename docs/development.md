@@ -12,21 +12,38 @@
 2. **Credentials Setup**
 
    ### Google Sheets Credentials
-   The application supports two methods for providing Google Sheets credentials:
+   The application supports multiple methods for providing Google Sheets credentials, with the following priority order:
 
-   a. Base64 Encoded JSON (Recommended for production)
+   1. Direct JSON credentials (highest priority)
    ```bash
-   # In .env file
+   # In .env file or passed directly to GoogleSheetsClient
+   GOOGLE_SHEETS_CREDENTIALS_JSON={"type": "service_account", ...}
+   ```
+
+   2. Base64 Encoded JSON
+   ```bash
+   # In .env file or passed directly to GoogleSheetsClient
    GOOGLE_SHEETS_CREDENTIALS_JSON=data:application/json;base64,<your_base64_encoded_credentials>
    ```
 
-   b. File-based Credentials
+   3. File Path (explicit path or environment variable)
    ```bash
    # In .env file
    GOOGLE_SHEETS_CREDENTIALS_PATH=/path/to/credentials.json
    ```
 
-   Note: Base64 encoded credentials take precedence over file-based credentials.
+   4. Default Location (lowest priority)
+   The client will look for credentials at `~/.config/gspread/credentials.json`
+
+   Notes:
+   - JSON credentials (direct or base64) take precedence over file-based credentials
+   - When using JSON credentials, the `creds_path` property will not be available
+   - File-based credentials can contain either direct JSON or base64 encoded content
+   - All credential formats must contain the required service account fields:
+     - type
+     - project_id
+     - private_key
+     - client_email
 
 3. **Environment Variables**
    Copy `.env.example` to `.env` and configure:
@@ -249,18 +266,15 @@ The test suite for the Google Sheets client (`test_sheets_client.py`) has been e
    - File-based credentials (explicit path, env var, default location)
    - Base64 encoded credentials
    - Direct JSON credentials
-   - Invalid credential scenarios
+   - Invalid credential formats
+   - Credential priority order
 
-2. **Error Case Coverage**:
-   - Missing credentials file
-   - Invalid credentials format
-   - Empty credentials file
-   - Invalid JSON/base64 content
-
-3. **Mock Improvements**:
-   - Enhanced credential mocking with proper error simulation
-   - Realistic file system interaction simulation
-   - Google API service mocking
+2. **Error Handling**:
+   - Missing credentials
+   - Invalid JSON format
+   - Invalid base64 encoding
+   - Missing required fields
+   - File not found scenarios
 
 ## Git Workflow
 
