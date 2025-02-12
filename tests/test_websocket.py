@@ -1,5 +1,7 @@
 """Tests for WebSocket functionality in the orchestrator."""
 
+import json
+import os
 import pytest
 from fastapi.testclient import TestClient
 from fastapi.websockets import WebSocket
@@ -9,8 +11,41 @@ from orchestrator.orchestrator import app, manager
 
 
 @pytest.fixture
-def websocket_client():
+def mock_agent_manager():
+    """Create a mock agent manager."""
+    manager = AsyncMock()
+    manager.execute_action_sequence = AsyncMock(return_value=[
+        {"step": {"action": "test"}, "result": {"status": "success", "message": "Test completed"}}
+    ])
+    return manager
+
+
+@pytest.fixture
+def mock_action_sequence():
+    """Create a mock action sequence."""
+    return {
+        "objective": "Test objective",
+        "steps": [
+            {
+                "agent": "test",
+                "action": "test",
+                "target": "test"
+            }
+        ]
+    }
+
+
+@pytest.fixture
+def mock_env_vars():
+    """Mock environment variables."""
+    with patch.dict(os.environ, {"TEMP_AUTH_TOKEN": "zigral_dev_token_123"}):
+        yield
+
+
+@pytest.fixture
+def websocket_client(mock_agent_manager, mock_env_vars):
     """Create a test client for WebSocket connections."""
+    app.state.agent_manager = mock_agent_manager
     return TestClient(app)
 
 
@@ -68,14 +103,18 @@ async def test_client_disconnect_handling():
 
 
 @pytest.mark.asyncio
-async def test_command_updates(websocket_client):
+async def test_command_updates(websocket_client, mock_action_sequence):
     """Test that command processing sends appropriate WebSocket updates."""
-    with websocket_client.websocket_connect("/ws/updates/test-client") as websocket:
+    with (
+        patch('orchestrator.orchestrator.generate_action_sequence', 
+              return_value=mock_action_sequence) as mock_generate,
+        websocket_client.websocket_connect("/ws/updates/test-client") as websocket
+    ):
         # Send a command via HTTP
         response = websocket_client.post(
             "/command",
             json={"command": "test command"},
-            headers={"Authorization": f"Bearer {pytest.TEST_AUTH_TOKEN}"}
+            headers={"Authorization": "Bearer zigral_dev_token_123"}
         )
         assert response.status_code == 200
         
@@ -86,5 +125,12 @@ async def test_command_updates(websocket_client):
         
         # Verify update sequence
         assert updates[0]["type"] == "command_received"
+        assert updates[0]["data"]["command"] == "test command"
+        
         assert updates[1]["type"] == "action_sequence_generated"
-        assert updates[2]["type"] == "execution_complete" 
+        assert updates[1]["data"] == mock_action_sequence
+        
+        assert updates[2]["type"] == "execution_complete"
+        assert updates[2]["data"]["objective"] == mock_action_sequence["objective"]
+        assert len(updates[2]["data"]["steps"]) == 1
+        assert updates[2]["data"]["steps"][0]["result"]["status"] == "success" 
