@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zigral - AI Agent Dashboard</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/chat.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar for Chat -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>Zigral Chat</h2>
+            </div>
+            <div class="chat-window" id="chat-window">
+                <!-- Chat messages will appear here -->
+            </div>
+            <div class="chat-input-container">
+                <textarea id="chat-input" class="chat-input" placeholder="Type your message..." rows="3"></textarea>
+                <button id="send-button" class="send-button">Send</button>
+            </div>
+        </div>
+        
+        <!-- Main content area for Kasm embed -->
+        <div class="main">
+            <div class="main-header">
+                <h2>Virtual Desktop</h2>
+                <div class="controls">
+                    <button id="refresh-kasm" class="control-button">Refresh</button>
+                    <button id="fullscreen-kasm" class="control-button">Fullscreen</button>
+                </div>
+            </div>
+            <div class="iframe-container">
+                <iframe id="kasm-iframe"
+                        src="https://kasm.example.com" 
+                        allow="autoplay; microphone; camera; clipboard-read; clipboard-write; window-management; self; https://kasm.example.com">
+                </iframe>
+            </div>
+        </div>
+    </div>
+    <script src="js/chat.js"></script>
+    <script src="js/kasm.js"></script>
+</body>
+</html> 
