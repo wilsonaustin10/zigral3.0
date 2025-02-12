@@ -3,14 +3,16 @@ version: '3.8'
 services:
   kasm:
     platform: linux/amd64
-    image: kasmweb/desktop:1.14.0
+    image: kasmweb/core:1.16.1
     ports:
-      - "6901:6901"  # Kasm web interface
+      - "8443:6901"
     environment:
-      - VNC_PW=password123  # Change this in production
-      - KASM_USER=zigral
+      - VNC_PW=adminpassword123
+      - SSL_ENABLED=true
+      - SSL_CERT_GEN=true
     volumes:
       - ./workspace:/workspace
+      - kasm_data:/opt/kasm
     deploy:
       resources:
         limits:
@@ -35,6 +37,9 @@ services:
       - DEBUG=True
       - LOG_LEVEL=DEBUG
       - PYTHONPATH=/app/src
+      - KASM_HOST=https://kasm:443
+      - KASM_USER=admin@kasm.local
+      - KASM_PASSWORD=adminpassword123
     networks:
       - zigral_network
 
@@ -72,6 +77,7 @@ services:
 volumes:
   postgres_data:
   rabbitmq_data:
+  kasm_data:
 
 networks:
   zigral_network:

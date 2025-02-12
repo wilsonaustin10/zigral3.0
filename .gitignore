@@ -91,3 +91,7 @@ captures/
 # Poetry
 poetry.lock
 
+# Kasm installer files
+kasm_install.sh
+kasm_release*.tar.gz
+
