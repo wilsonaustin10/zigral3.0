@@ -10,6 +10,8 @@ import json
 import os
 from typing import Dict, Optional, Any, Literal
 from contextlib import asynccontextmanager
+from datetime import datetime
+import uuid
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
@@ -18,6 +20,7 @@ from pydantic import BaseModel, Field, validator
 from common.messaging import RabbitMQClient
 from .linkedin_client import LinkedInClient
 from .utils import setup_logger
+from src.ui.credentials import TwoFactorRequest, TwoFactorResponse
 
 # Initialize logger
 logger = setup_logger("lincoln.main")
@@ -149,7 +152,7 @@ class LincolnAgent:
             }
     
     async def handle_login(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle LinkedIn login."""
+        """Handle LinkedIn login with 2FA support."""
         try:
             username = data.get("username")
             password = data.get("password")
@@ -165,16 +168,86 @@ class LincolnAgent:
             os.environ["LINKEDIN_PASSWORD"] = password
             
             # Attempt login
-            success = await self.linkedin_client.login()
+            login_result = await self.linkedin_client.login()
+            
+            # Check if 2FA is required
+            if login_result.get("requires_2fa"):
+                # Create a 2FA request
+                session_id = str(uuid.uuid4())
+                twofa_request = TwoFactorRequest(
+                    service="linkedin",
+                    user_id=username,
+                    session_id=session_id,
+                    type=login_result.get("2fa_type", "unknown"),
+                    metadata={
+                        "login_timestamp": datetime.now().isoformat(),
+                        "2fa_details": login_result.get("2fa_details", {})
+                    }
+                )
+                
+                try:
+                    # Request 2FA code from user
+                    twofa_result = await self.request_2fa(twofa_request)
+                    
+                    if twofa_result["status"] == "success":
+                        # Submit 2FA code
+                        verification_result = await self.linkedin_client.verify_2fa(
+                            twofa_result["code"]
+                        )
+                        
+                        if verification_result.get("success"):
+                            return {
+                                "status": "success",
+                                "message": "Successfully logged in with 2FA"
+                            }
+                        else:
+                            return {
+                                "status": "error",
+                                "error": "2FA verification failed",
+                                "details": verification_result.get("error")
+                            }
+                    else:
+                        return {
+                            "status": "error",
+                            "error": "Failed to get 2FA code",
+                            "details": twofa_result.get("error")
+                        }
+                        
+                except Exception as e:
+                    return {
+                        "status": "error",
+                        "error": f"2FA process failed: {str(e)}"
+                    }
             
             return {
-                "status": "success" if success else "error",
-                "message": "Successfully logged in" if success else "Login failed"
+                "status": "success" if login_result.get("success") else "error",
+                "message": "Successfully logged in" if login_result.get("success") else "Login failed"
             }
+            
         except Exception as e:
             return {
                 "status": "error",
                 "error": f"Login failed: {str(e)}"
+            }
+
+    async def request_2fa(self, request: TwoFactorRequest) -> Dict[str, Any]:
+        """
+        Request 2FA code from user through the credentials service.
+        
+        Args:
+            request: The 2FA request details
+            
+        Returns:
+            Dict containing the 2FA result
+        """
+        try:
+            # Make request to credentials service
+            response = await self.credentials_client.request_2fa(request)
+            return response
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": f"Failed to request 2FA: {str(e)}"
             }
     
     async def cleanup(self):

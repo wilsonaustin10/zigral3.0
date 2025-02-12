@@ -9,6 +9,7 @@ It uses the gspread library for Google Sheets API integration.
 import asyncio
 import json
 import os
+import base64
 from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -61,28 +62,15 @@ class GoogleSheetsClient:
     def _gs_authorize(self, creds):
         return gspread.authorize(creds)
 
-    def __init__(self, creds_path: Optional[str] = None):
+    def __init__(self, creds_path: Optional[str] = None, creds_json: Optional[str] = None):
         """
         Initialize the Google Sheets client.
 
         Args:
             creds_path (Optional[str]): Path to the Google Sheets credentials file.
-                If not provided, will look for credentials in environment variables
-                or default locations.
+            creds_json (Optional[str]): Base64 encoded JSON string of credentials.
+                If provided, this takes precedence over creds_path.
         """
-        if creds_path:
-            self.creds_path = str(Path(creds_path).resolve())
-        elif "GOOGLE_SHEETS_CREDENTIALS" in os.environ:
-            self.creds_path = os.environ["GOOGLE_SHEETS_CREDENTIALS"]
-        else:
-            # Dynamically compute default path using current HOME env variable
-            home_dir = os.environ.get("HOME", str(Path.home()))
-            default_path = Path(home_dir) / ".config" / "gspread" / "credentials.json"
-            if default_path.exists():
-                self.creds_path = str(default_path.resolve())
-            else:
-                raise FileNotFoundError(f"Credentials file not found. Provided env var: {os.environ.get('GOOGLE_SHEETS_CREDENTIALS')}, default: {default_path}")
-
         self.client: Optional[gspread.Client] = None
         self.spreadsheet: Optional[gspread.Spreadsheet] = None
         self.worksheet: Optional[gspread.Worksheet] = None
@@ -98,49 +86,64 @@ class GoogleSheetsClient:
             'Last Updated'
         ]
         self._is_initialized = False
+        
+        # Try to get credentials from environment first
+        self.creds_json = creds_json or os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
+        
+        if self.creds_json:
+            try:
+                # If credentials are base64 encoded, decode them
+                if ';base64,' in self.creds_json:
+                    _, b64_creds = self.creds_json.split(';base64,')
+                    self.creds_json = base64.b64decode(b64_creds).decode('utf-8')
+                self.creds_info = json.loads(self.creds_json)
+            except (json.JSONDecodeError, ValueError) as e:
+                raise ValueError(f"Invalid credentials JSON format: {str(e)}")
+        else:
+            # Fall back to file-based credentials
+            if creds_path:
+                self.creds_path = str(Path(creds_path).resolve())
+            elif "GOOGLE_SHEETS_CREDENTIALS_PATH" in os.environ:
+                self.creds_path = os.environ["GOOGLE_SHEETS_CREDENTIALS_PATH"]
+            else:
+                # Dynamically compute default path using current HOME env variable
+                home_dir = os.environ.get("HOME", str(Path.home()))
+                default_path = Path(home_dir) / ".config" / "gspread" / "credentials.json"
+                if default_path.exists():
+                    self.creds_path = str(default_path.resolve())
+                else:
+                    raise FileNotFoundError(
+                        "No credentials found. Please provide either:\n"
+                        "1. GOOGLE_SHEETS_CREDENTIALS_JSON environment variable with base64 encoded credentials\n"
+                        "2. GOOGLE_SHEETS_CREDENTIALS_PATH environment variable with path to credentials file\n"
+                        "3. credentials.json in ~/.config/gspread/"
+                    )
 
     async def initialize(self):
-        """
-        Initialize the Google Sheets client with credentials.
+        """Initialize the Google Sheets client with credentials."""
+        if self._is_initialized:
+            return
 
-        This method reads the credentials from the specified file path and initializes
-        the Google Sheets client. For testing purposes, it supports dummy credentials
-        when a minimal private key is provided or when key deserialization fails.
-
-        The method will use dummy credentials in the following cases:
-        1. When the private key matches a known test key
-        2. When the private key is very short (less than 200 characters)
-        3. When the key deserialization fails
-
-        Raises:
-            FileNotFoundError: If the credentials file does not exist
-            json.JSONDecodeError: If the credentials file contains invalid JSON
-            Exception: For other initialization errors
-        """
         try:
-            with open(self.creds_path, "r") as f:
-                creds_data = json.load(f)
-
-            private_key = creds_data.get("private_key", "").strip()
-            # If the private key is very short or exactly matches a known dummy key,
-            # then assume dummy credentials (used in tests).
-            if private_key == "-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----" or len(private_key) < 200:
-                creds = DummyCredentials()
+            if hasattr(self, 'creds_info'):
+                # Use credentials from JSON
+                creds = Credentials.from_service_account_info(
+                    self.creds_info,
+                    scopes=SCOPES
+                )
             else:
-                try:
-                    creds = Credentials.from_service_account_info(creds_data, scopes=SCOPES)
-                except ValueError as e:
-                    if "Could not deserialize key data" in str(e):
-                        creds = DummyCredentials()
-                    else:
-                        raise e
+                # Use credentials from file
+                creds = Credentials.from_service_account_file(
+                    self.creds_path,
+                    scopes=SCOPES
+                )
 
             self.client = self._gs_authorize(creds)
-            logger.info("Google Sheets client initialized successfully")
             self._is_initialized = True
+            self.logger.info("Google Sheets client initialized successfully")
         except Exception as e:
-            logger.error("Failed to initialize Google Sheets client: %s", e)
-            raise e
+            self.logger.error(f"Failed to initialize Google Sheets client: {str(e)}")
+            raise
 
     async def cleanup(self):
         """Clean up resources."""

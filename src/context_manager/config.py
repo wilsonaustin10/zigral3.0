@@ -1,86 +1,61 @@
+"""Configuration settings for the context manager."""
+
+import os
 from functools import lru_cache
-from typing import Any, Dict
+from typing import Optional
 
-from pydantic_settings import BaseSettings
-
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    """Configuration settings for the Context Manager"""
-
-    # Service settings
-    SERVICE_NAME: str = "context-manager"
-    VERSION: str = "1.0.0"
-    DEBUG: bool = False
-    APP_ENV: str = "development"
-    LOG_LEVEL: str = "INFO"
-
-    # API settings
+    """Application settings."""
+    
+    # Version
+    VERSION: str = "3.0.0"
+    
+    # Service Configuration
+    DEBUG: bool = True
+    LOG_LEVEL: str = "DEBUG"
+    
+    # API Settings
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
     CONTEXT_MANAGER_HOST: str = "0.0.0.0"
     CONTEXT_MANAGER_PORT: int = 8001
+    
+    # Database Configuration
+    DATABASE_URL: str = "postgresql://user:password@localhost:5432/zigral"
+    
+    # OpenAI Configuration
+    OPENAI_API_KEY: str
+    
+    # Service Selection
+    SERVICE_NAME: str = "context-manager"
+    
+    # Security
+    JWT_SECRET_KEY: str = "your_jwt_secret_here"
+    JWT_ALGORITHM: str = "HS256"
+    
+    # VDI Configuration
+    VIRTUAL_DESKTOP_MODE: bool = True
+    ENABLE_VIDEO_STREAM: bool = False
+    
+    # Kasm Configuration
+    KASM_USER: str = "kasm_user"
+    KASM_PASSWORD: str = "password123"
+    
+    # Google Sheets Configuration
+    GOOGLE_SHEETS_CREDENTIALS_JSON: Optional[str] = None
+    GOOGLE_SHEETS_CREDENTIALS_PATH: Optional[str] = None
+    PROSPECTS_SHEET_ID: Optional[str] = None
+    PROSPECTS_WORKSHEET: Optional[str] = None
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="allow"
+    )
 
-    # Database settings
-    DATABASE_URL: str = "postgres://user:password@localhost:5432/zigral"
-
-    # OpenAI settings
-    OPENAI_API_KEY: str = "your_api_key_here"
-
-    # Google Sheets settings
-    GOOGLE_SHEETS_CREDENTIALS: str = "config/credentials/credentials.json"
-
-    # RabbitMQ settings
-    RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
-
-    # Tortoise ORM settings
-    TORTOISE_ORM: Dict[str, Any] = {
-        "connections": {
-            "default": {
-                "engine": "tortoise.backends.asyncpg",
-                "credentials": {
-                    "host": "localhost",
-                    "port": 5432,
-                    "user": "user",
-                    "password": "password",
-                    "database": "zigral",
-                },
-            }
-        },
-        "apps": {
-            "context_manager": {
-                "models": ["context_manager.models"],
-                "default_connection": "default",
-            }
-        },
-        "use_tz": False,
-        "timezone": "UTC",
-    }
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Update Tortoise ORM config with actual DATABASE_URL
-        self.TORTOISE_ORM["connections"]["default"] = {
-            "engine": "tortoise.backends.asyncpg",
-            "credentials": {
-                "host": "localhost",
-                "port": 5432,
-                "user": "user",
-                "password": "password",
-                "database": "zigral",
-            },
-        }
-
-
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
-    """
-    Get cached settings instance
-
-    Returns:
-        Settings: Application settings
-    """
+    """Get cached settings instance."""
     return Settings()

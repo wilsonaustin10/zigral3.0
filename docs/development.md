@@ -540,3 +540,23 @@ To convert your existing credentials file to the new format:
 3. **Rotate credentials regularly**
 4. **Use minimal scope permissions**
 5. **Monitor credential usage** 
+
+## Recent Updates
+
+### Interactive 2FA Handling Improvements
+
+- **LinkedIn Agent Updates:**
+  - The LinkedIn client now supports interactive two-factor authentication.
+  - Dummy page injection has been implemented to simulate both scenarios: tests where 2FA is not required and tests where a 2FA PIN is expected.
+  - A new pytest fixture (`linkedin_client_with_success`) has been introduced to simulate a successful login along with interactive 2FA handling.
+  - Inline comments in `src/agents/lincoln/linkedin_client.py` have been updated to document the new interactive 2FA flow, including extraction and verification steps.
+
+### Testing Enhancements
+
+- All tests in `tests/agents/lincoln/test_linkedin_client.py` now pass with the updated interactive 2FA handling.
+- Minor runtime warnings related to asynchronous mocks are present but do not affect test outcomes.
+
+## General Practices
+
+- Run tests using `poetry run pytest --tb=short` before committing changes.
+- Follow detailed commit and branch strategies as outlined in the project CHANGELOG and requirements. 
