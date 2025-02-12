@@ -95,3 +95,6 @@ poetry.lock
 kasm_install.sh
 kasm_release*.tar.gz
 
+# Kasm configuration
+frontend/js/kasm.js
+

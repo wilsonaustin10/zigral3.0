@@ -1,0 +1,87 @@
+document.addEventListener('DOMContentLoaded', async () => {
+    const kasmIframe = document.getElementById('kasm-iframe');
+    const refreshButton = document.getElementById('refresh-kasm');
+    const fullscreenButton = document.getElementById('fullscreen-kasm');
+
+    // Initialize Kasm API
+    const kasmApi = new KasmAPI({
+        baseUrl: process.env.KASM_HOST || 'https://your-kasm-host.com',
+        authDomain: process.env.KASM_AUTH_DOMAIN || 'your-domain.com',
+        username: process.env.KASM_USER || 'your-username',
+        password: process.env.KASM_PASSWORD || 'your-password',
+        apiKey: process.env.KASM_API_KEY || 'your-api-key',
+        apiKeySecret: process.env.KASM_API_KEY_SECRET || 'your-api-key-secret'
+    });
+
+    let currentSessionId = null;
+
+    async function initializeKasmSession() {
+        try {
+            // Initialize API and authenticate
+            await kasmApi.initialize();
+
+            // Create a new session
+            const sessionData = await kasmApi.createSession('default_image_id'); // Replace with your image ID
+            currentSessionId = sessionData.session_id;
+
+            // Update iframe source with session URL
+            kasmIframe.src = sessionData.session_url;
+        } catch (error) {
+            console.error('Failed to initialize Kasm session:', error);
+            // TODO: Show error UI to user
+        }
+    }
+
+    // Initialize session when page loads
+    await initializeKasmSession();
+
+    // Function to refresh the Kasm iframe
+    refreshButton.addEventListener('click', async () => {
+        if (currentSessionId) {
+            try {
+                await kasmApi.destroySession(currentSessionId);
+            } catch (error) {
+                console.error('Error destroying old session:', error);
+            }
+        }
+        await initializeKasmSession();
+    });
+
+    // Function to toggle fullscreen
+    fullscreenButton.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+            kasmIframe.requestFullscreen().catch(err => {
+                console.error(`Error attempting to enable fullscreen: ${err.message}`);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    });
+
+    // Update fullscreen button text based on fullscreen state
+    document.addEventListener('fullscreenchange', () => {
+        fullscreenButton.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
+    });
+
+    // Handle iframe load events
+    kasmIframe.addEventListener('load', () => {
+        console.log('Kasm iframe loaded');
+    });
+
+    // Handle iframe errors
+    kasmIframe.addEventListener('error', () => {
+        console.error('Error loading Kasm iframe');
+        // TODO: Implement error handling UI
+    });
+
+    // Clean up session when page is unloaded
+    window.addEventListener('beforeunload', async () => {
+        if (currentSessionId) {
+            try {
+                await kasmApi.destroySession(currentSessionId);
+            } catch (error) {
+                console.error('Error destroying session during cleanup:', error);
+            }
+        }
+    });
+}); 
