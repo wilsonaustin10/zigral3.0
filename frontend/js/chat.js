@@ -6,9 +6,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     statusIndicator.className = 'status-indicator';
     document.querySelector('.sidebar-header').appendChild(statusIndicator);
 
-    // Initialize API client
+    // Initialize API client with dev token
     const api = new ZigralAPI({
-        token: localStorage.getItem('auth_token'),
+        token: 'zigral_dev_token_123',  // Explicitly set the dev token
         onUpdate: handleUpdate,
         onError: handleError
     });

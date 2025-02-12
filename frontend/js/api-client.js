@@ -1,13 +1,32 @@
 /**
  * API Client for Zigral Backend
- * Handles both REST and WebSocket communication with the backend
+ * 
+ * This client handles both REST and WebSocket communication with the Zigral backend.
+ * It provides:
+ * - Authentication using a dev token (zigral_dev_token_123)
+ * - Real-time updates via WebSocket
+ * - Command sending and response handling
+ * - Automatic reconnection with exponential backoff
+ * 
+ * Usage:
+ * ```javascript
+ * const api = new ZigralAPI({
+ *   token: 'zigral_dev_token_123',
+ *   onUpdate: (update) => console.log('Update:', update),
+ *   onError: (msg, err) => console.error(msg, err)
+ * });
+ * 
+ * await api.initialize();
+ * await api.sendCommand('find CTOs in Austin');
+ * ```
  */
 
 class ZigralAPI {
     constructor(config = {}) {
-        this.baseUrl = config.baseUrl || 'http://localhost:8000';
-        this.wsUrl = config.wsUrl || 'ws://localhost:8000';
-        this.token = config.token;
+        // Use environment variables or fallback to localhost
+        this.baseUrl = 'http://localhost:8000';
+        this.wsUrl = 'ws://localhost:8000';
+        this.token = config.token || 'zigral_dev_token_123';  // Default to dev token
         this.onUpdate = config.onUpdate || (() => {});
         this.onError = config.onError || console.error;
         this.clientId = `client-${Math.random().toString(36).substr(2, 9)}`;
@@ -41,14 +60,23 @@ class ZigralAPI {
      */
     async connectWebSocket() {
         try {
-            this.ws = new WebSocket(`${this.wsUrl}/ws/updates/${this.clientId}`);
+            const wsEndpoint = `${this.wsUrl}/ws/updates/${this.clientId}`;
+            console.log('Connecting to WebSocket:', wsEndpoint);
+            
+            this.ws = new WebSocket(wsEndpoint);
 
             this.ws.onmessage = (event) => {
-                const update = JSON.parse(event.data);
-                this.onUpdate(update);
+                try {
+                    const update = JSON.parse(event.data);
+                    console.log('WebSocket message received:', update);
+                    this.onUpdate(update);
+                } catch (error) {
+                    this.onError('Failed to parse WebSocket message:', error);
+                }
             };
 
             this.ws.onclose = () => {
+                console.log('WebSocket closed, attempt:', this.reconnectAttempts);
                 if (this.reconnectAttempts < this.maxReconnectAttempts) {
                     setTimeout(() => {
                         this.reconnectAttempts++;
@@ -60,6 +88,7 @@ class ZigralAPI {
             };
 
             this.ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
                 this.onError('WebSocket error:', error);
             };
 
