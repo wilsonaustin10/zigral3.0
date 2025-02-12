@@ -4,6 +4,14 @@ Zigral Orchestrator API
 This module provides a FastAPI application for orchestrating command processing with
 robust validation and rate limiting. It handles command processing and context validation.
 
+Recent Changes (2025-02-12):
+1. Updated error handling for OpenAI API rate limits:
+   - Removed dependency on headers attribute from APIStatusError
+   - Added default 60-second retry value for rate limit errors
+   - Updated to use model_dump() instead of deprecated dict() method
+2. Improved error response structure with DetailedErrorResponse model
+3. Added proper HTTP status code propagation for API errors
+
 Context Validation Rules:
 1. Structure Validation:
    - Context must be a dictionary
@@ -293,8 +301,17 @@ async def process_command(
             error_response = DetailedErrorResponse(
                 error="Rate limit exceeded",
                 error_type="rate_limit",
-                details={"retry_after": e.headers.get("Retry-After", 60)},
+                details={"retry_after": 60},  # Default to 60 seconds for rate limit retry
                 status_code=429
+            )
+            # Broadcast error
+            await manager.broadcast({
+                "type": "error",
+                "data": error_response.model_dump()  # Updated to use model_dump instead of dict
+            })
+            raise HTTPException(
+                status_code=429,
+                detail=error_response.model_dump()
             )
         else:
             error_response = DetailedErrorResponse(
@@ -302,13 +319,15 @@ async def process_command(
                 error_type="api_error",
                 status_code=e.status_code
             )
-        
-        # Broadcast error
-        await manager.broadcast({
-            "type": "error",
-            "data": error_response.dict()
-        })
-        return error_response
+            # Broadcast error
+            await manager.broadcast({
+                "type": "error",
+                "data": error_response.model_dump()  # Updated to use model_dump instead of dict
+            })
+            raise HTTPException(
+                status_code=e.status_code,
+                detail=error_response.model_dump()
+            )
         
     except HTTPException as e:
         error_response = DetailedErrorResponse(

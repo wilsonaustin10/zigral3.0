@@ -110,6 +110,9 @@
   - Execution progress
   - Error handling
 - Added reconnection logic with exponential backoff
+- Fixed error handling for OpenAI API rate limits
+- Updated error response format to match FastAPI standards
+- Added proper HTTP status code propagation
 
 ### 3. Frontend Components
 #### API Client (`frontend/js/api-client.js`)

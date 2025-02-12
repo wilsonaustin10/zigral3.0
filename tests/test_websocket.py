@@ -1,4 +1,11 @@
-"""Tests for WebSocket functionality in the orchestrator."""
+"""Tests for WebSocket functionality in the orchestrator.
+
+Recent Changes (2025-02-12):
+1. Added mock_env_vars fixture to properly mock TEMP_AUTH_TOKEN
+2. Updated test_command_updates to handle FastAPI's error response format
+3. Added proper authentication headers to test requests
+4. Fixed WebSocket update assertions to match the orchestrator's response format
+"""
 
 import json
 import os
