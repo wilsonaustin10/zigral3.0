@@ -1,4 +1,7 @@
+"""Tests for the orchestrator API."""
+
 import json
+import os
 import time
 from unittest.mock import AsyncMock, patch
 
@@ -84,7 +87,14 @@ def mock_agent_manager():
 
 
 @pytest.fixture
-def orchestrator_client(mock_agent_manager):
+def mock_env_vars():
+    """Mock environment variables."""
+    with patch.dict(os.environ, {"TEMP_AUTH_TOKEN": "zigral_dev_token_123"}):
+        yield
+
+
+@pytest.fixture
+def orchestrator_client(mock_agent_manager, mock_env_vars):
     """Create a test client for the orchestrator with mocked dependencies."""
     app.state.agent_manager = mock_agent_manager
     return TestClient(app)
@@ -94,7 +104,6 @@ def orchestrator_client(mock_agent_manager):
 def reset_rate_limiter():
     """Reset rate limiter state between tests"""
     from orchestrator.orchestrator import limiter
-
     limiter.reset()
     yield
 
@@ -108,7 +117,11 @@ def test_process_command(mock_openai_client, orchestrator_client):
             "target_roles": ["CTO", "Chief Technology Officer"],
         },
     }
-    response = orchestrator_client.post("/command", json=command)
+    response = orchestrator_client.post(
+        "/command",
+        json=command,
+        headers={"Authorization": "Bearer zigral_dev_token_123"}
+    )
     assert response.status_code == 200
     assert "objective" in response.json()
     assert "steps" in response.json()
@@ -117,7 +130,11 @@ def test_process_command(mock_openai_client, orchestrator_client):
 def test_process_command_without_context(mock_openai_client, orchestrator_client):
     """Test processing a command without context"""
     command = {"command": "Find CTOs in San Francisco"}
-    response = orchestrator_client.post("/command", json=command)
+    response = orchestrator_client.post(
+        "/command",
+        json=command,
+        headers={"Authorization": "Bearer zigral_dev_token_123"}
+    )
     assert response.status_code == 200
     assert "objective" in response.json()
     assert "steps" in response.json()
@@ -127,17 +144,29 @@ def test_process_invalid_command(orchestrator_client):
     """Test processing an invalid command"""
     # Empty command
     invalid_command = {}
-    response = orchestrator_client.post("/command", json=invalid_command)
+    response = orchestrator_client.post(
+        "/command",
+        json=invalid_command,
+        headers={"Authorization": "Bearer zigral_dev_token_123"}
+    )
     assert response.status_code == 422  # Validation error
 
     # Missing command field
     invalid_command = {"context": {}}
-    response = orchestrator_client.post("/command", json=invalid_command)
+    response = orchestrator_client.post(
+        "/command",
+        json=invalid_command,
+        headers={"Authorization": "Bearer zigral_dev_token_123"}
+    )
     assert response.status_code == 422
 
     # Empty command string
     invalid_command = {"command": ""}
-    response = orchestrator_client.post("/command", json=invalid_command)
+    response = orchestrator_client.post(
+        "/command",
+        json=invalid_command,
+        headers={"Authorization": "Bearer zigral_dev_token_123"}
+    )
     assert response.status_code == 422
 
 
@@ -148,7 +177,11 @@ def test_process_command_with_invalid_context(orchestrator_client):
         "command": "Find CTOs",
         "context": "invalid_context",  # Should be a dict
     }
-    response = orchestrator_client.post("/command", json=invalid_command)
+    response = orchestrator_client.post(
+        "/command",
+        json=invalid_command,
+        headers={"Authorization": "Bearer zigral_dev_token_123"}
+    )
     assert response.status_code == 422
 
     # Invalid context structure
@@ -156,7 +189,11 @@ def test_process_command_with_invalid_context(orchestrator_client):
         "command": "Find CTOs",
         "context": {"territory": []},  # Should be a string
     }
-    response = orchestrator_client.post("/command", json=invalid_command)
+    response = orchestrator_client.post(
+        "/command",
+        json=invalid_command,
+        headers={"Authorization": "Bearer zigral_dev_token_123"}
+    )
     assert response.status_code == 422
 
 
@@ -171,7 +208,11 @@ def test_process_complex_command(mock_openai_client, orchestrator_client):
             "email": "test@example.com",
         },
     }
-    response = orchestrator_client.post("/command", json=complex_command)
+    response = orchestrator_client.post(
+        "/command",
+        json=complex_command,
+        headers={"Authorization": "Bearer zigral_dev_token_123"}
+    )
     assert response.status_code == 200
     assert "objective" in response.json()
     assert "steps" in response.json()
@@ -199,8 +240,9 @@ def test_rate_limiting(mock_openai_client, orchestrator_client):
                 "/command",
                 json={"command": "Find CTOs"},
                 headers={
-                    "X-Forwarded-For": "127.0.0.1"
-                },  # Ensure consistent IP for rate limiting
+                    "Authorization": "Bearer zigral_dev_token_123",
+                    "X-Forwarded-For": "127.0.0.1"  # Ensure consistent IP for rate limiting
+                }
             )
             responses.append(response)
 
@@ -208,9 +250,7 @@ def test_rate_limiting(mock_openai_client, orchestrator_client):
         success_responses = [r for r in responses if r.status_code == 200]
         rate_limited_responses = [r for r in responses if r.status_code == 429]
 
-        assert (
-            len(success_responses) == 5
-        ), "Should have exactly 5 successful responses (rate limit)"
+        assert len(success_responses) == 5, "Should have exactly 5 successful responses (rate limit)"
         assert len(rate_limited_responses) == 5, "Should have 5 rate-limited responses"
 
         # Verify successful response format
@@ -242,15 +282,19 @@ def test_openai_rate_limit_handling(mock_rate_limited_client, orchestrator_clien
         return_value=mock_rate_limited_client,
     ):
         command = {"command": "Find CTOs in San Francisco"}
-        response = orchestrator_client.post("/command", json=command)
-
-        # Verify response
-        assert (
-            response.status_code == 200
-        )  # Changed to 200 since we're returning error in response body
-        error_data = response.json()
-        assert "error" in error_data
-        assert "exceeded your current quota" in error_data["error"]
+        response = orchestrator_client.post(
+            "/command",
+            json=command,
+            headers={"Authorization": "Bearer zigral_dev_token_123"}
+        )
+        
+        assert response.status_code == 429
+        data = response.json()
+        detail = data["detail"]
+        assert detail["error"] == "Rate limit exceeded"
+        assert detail["error_type"] == "rate_limit"
+        assert detail["details"]["retry_after"] == 60
+        assert detail["status_code"] == 429
 
 
 def test_api_rate_limit_reset(mock_openai_client, orchestrator_client):
@@ -274,19 +318,23 @@ def test_api_rate_limit_reset(mock_openai_client, orchestrator_client):
             response = orchestrator_client.post(
                 "/command",
                 json={"command": "Find CTOs"},
-                headers={"X-Forwarded-For": "127.0.0.1"},
+                headers={
+                    "Authorization": "Bearer zigral_dev_token_123",
+                    "X-Forwarded-For": "127.0.0.1"
+                }
             )
             first_responses.append(response)
 
-        assert all(
-            r.status_code == 200 for r in first_responses
-        ), "First 5 requests should succeed"
+        assert all(r.status_code == 200 for r in first_responses), "First 5 requests should succeed"
 
         # Next request should be rate limited
         rate_limited = orchestrator_client.post(
             "/command",
             json={"command": "Find CTOs"},
-            headers={"X-Forwarded-For": "127.0.0.1"},
+            headers={
+                "Authorization": "Bearer zigral_dev_token_123",
+                "X-Forwarded-For": "127.0.0.1"
+            }
         )
         assert rate_limited.status_code == 429, "6th request should be rate limited"
 
@@ -296,8 +344,9 @@ def test_api_rate_limit_reset(mock_openai_client, orchestrator_client):
             response = orchestrator_client.post(
                 "/command",
                 json={"command": "Find CTOs"},
-                headers={"X-Forwarded-For": "127.0.0.1"},
+                headers={
+                    "Authorization": "Bearer zigral_dev_token_123",
+                    "X-Forwarded-For": "127.0.0.1"
+                }
             )
-            assert (
-                response.status_code == 200
-            ), "Request should succeed after rate limit window reset"
+            assert response.status_code == 200, "Request should succeed after rate limit window reset"

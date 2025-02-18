@@ -1,14 +1,23 @@
 class KasmAPI {
     constructor(config = {}) {
-        this.baseUrl = config.baseUrl || 'https://kasm.example.com'; // Update with your Kasm server URL
-        this.authDomain = config.authDomain || 'example.com';
+        const isDevelopment = import.meta.env.DEV;
+        this.baseUrl = isDevelopment ? '/kasm-proxy' : import.meta.env.VITE_KASM_HOST;
+        this.authDomain = config.authDomain || import.meta.env.VITE_KASM_AUTH_DOMAIN;
         this.credentials = {
-            username: config.username || '',
-            password: config.password || '',
-            apiKey: config.apiKey || '',
-            apiKeySecret: config.apiKeySecret || ''
+            apiKey: config.apiKey || import.meta.env.VITE_KASM_API_KEY,
+            apiKeySecret: config.apiKeySecret || import.meta.env.VITE_KASM_API_KEY_SECRET
         };
         this.token = null;
+        
+        // Log configuration in development mode
+        if (isDevelopment) {
+            console.log('KasmAPI Configuration:', {
+                baseUrl: this.baseUrl,
+                authDomain: this.authDomain,
+                apiKeyPresent: !!this.credentials.apiKey,
+                apiKeySecretPresent: !!this.credentials.apiKeySecret
+            });
+        }
     }
 
     async initialize() {
@@ -24,31 +33,42 @@ class KasmAPI {
     async authenticate() {
         try {
             const headers = {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Origin': window.location.origin,
+                'Host': window.location.host
             };
 
-            // Add API key authentication if available
-            if (this.credentials.apiKey && this.credentials.apiKeySecret) {
-                headers['X-Api-Key'] = this.credentials.apiKey;
-                headers['X-Api-Key-Secret'] = this.credentials.apiKeySecret;
-            }
+            console.log('Authenticating with credentials:', {
+                apiKeyPresent: !!this.credentials.apiKey,
+                apiKeySecretPresent: !!this.credentials.apiKeySecret,
+                authDomain: this.authDomain
+            });
 
             const response = await fetch(`${this.baseUrl}/api/authenticate`, {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify({
-                    username: this.credentials.username,
-                    password: this.credentials.password
+                    api_key: this.credentials.apiKey,
+                    api_key_secret: this.credentials.apiKeySecret,
+                    auth_domain: this.authDomain  // Add auth_domain to the request body
                 }),
-                credentials: 'include'
+                credentials: 'include'  // Important: This ensures cookies are sent and stored
             });
 
             if (!response.ok) {
-                throw new Error(`Authentication failed: ${response.statusText}`);
+                const error = await response.json().catch(() => ({ message: response.statusText }));
+                throw new Error(error.message || 'Authentication failed');
             }
 
             const data = await response.json();
             this.token = data.token;
+
+            // Log cookies in development mode
+            if (import.meta.env.DEV) {
+                console.log('Authentication successful. Cookies:', document.cookie);
+            }
+
             return data;
         } catch (error) {
             console.error('Authentication error:', error);
@@ -56,25 +76,21 @@ class KasmAPI {
         }
     }
 
-    // Helper method to get headers with authentication
     _getAuthHeaders() {
         const headers = {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Origin': window.location.origin
         };
 
         if (this.token) {
             headers['Authorization'] = `Bearer ${this.token}`;
         }
 
-        if (this.credentials.apiKey && this.credentials.apiKeySecret) {
-            headers['X-Api-Key'] = this.credentials.apiKey;
-            headers['X-Api-Key-Secret'] = this.credentials.apiKeySecret;
-        }
-
         return headers;
     }
 
-    async createSession(imageId) {
+    async createSession(imageId = 'kasmweb/ubuntu-jammy-desktop:1.14.0') {
         if (!this.token && !this.credentials.apiKey) {
             throw new Error('Not authenticated');
         }
@@ -85,15 +101,21 @@ class KasmAPI {
                 headers: this._getAuthHeaders(),
                 body: JSON.stringify({
                     image_id: imageId,
+                    auth_domain: this.authDomain,
+                    allow_origin: window.location.origin,
+                    persistent: false, // Don't persist the container to save disk space
+                    gpu_count: 0      // Don't request GPU to reduce resource usage
                 }),
                 credentials: 'include'
             });
 
             if (!response.ok) {
-                throw new Error(`Failed to create session: ${response.statusText}`);
+                const error = await response.json().catch(() => ({ message: response.statusText }));
+                throw new Error(error.message || response.statusText);
             }
 
             const sessionData = await response.json();
+            console.log('Session created:', sessionData);
             return sessionData;
         } catch (error) {
             console.error('Session creation error:', error);

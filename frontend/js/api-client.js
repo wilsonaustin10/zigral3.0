@@ -23,9 +23,9 @@
 
 class ZigralAPI {
     constructor(config = {}) {
-        // Use environment variables or fallback to localhost
-        this.baseUrl = 'http://localhost:8000';
-        this.wsUrl = 'ws://localhost:8000';
+        // Use production URLs
+        this.baseUrl = 'https://34.136.51.93:8000';
+        this.wsUrl = 'wss://34.136.51.93:8000';
         this.token = config.token || 'zigral_dev_token_123';  // Default to dev token
         this.onUpdate = config.onUpdate || (() => {});
         this.onError = config.onError || console.error;

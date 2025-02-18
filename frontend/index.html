@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zigral - AI Agent Dashboard</title>
-    <link rel="stylesheet" href="css/styles.css">
-    <link rel="stylesheet" href="css/chat.css">
+    <link rel="stylesheet" href="./css/styles.css">
+    <link rel="stylesheet" href="./css/chat.css">
     <!-- Add favicon -->
-    <link rel="icon" type="image/png" href="img/favicon.png">
+    <link rel="icon" type="image/png" href="./img/favicon.png">
 </head>
 <body>
     <div class="container">
@@ -37,24 +37,33 @@
             <div class="main-header">
                 <h2>Virtual Desktop</h2>
                 <div class="controls">
-                    <button id="refresh-kasm" class="control-button">Refresh</button>
-                    <button id="fullscreen-kasm" class="control-button">Fullscreen</button>
+                    <button id="refresh-kasm" class="control-button">
+                        <span class="icon">🔄</span>
+                        Refresh
+                    </button>
+                    <button id="fullscreen-kasm" class="control-button">
+                        <span class="icon">⛶</span>
+                        Fullscreen
+                    </button>
                 </div>
             </div>
-            <div class="iframe-container">
+            <div class="iframe-container loading">
                 <iframe id="kasm-iframe"
                         src="about:blank" 
                         allow="autoplay; microphone; camera; clipboard-read; clipboard-write; window-management"
-                        sandbox="allow-scripts allow-same-origin allow-forms">
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads"
+                        loading="lazy"
+                        title="Kasm Workspace">
                 </iframe>
             </div>
         </div>
     </div>
 
     <!-- Scripts -->
-    <script src="js/api-client.js"></script>
-    <script src="js/chat.js"></script>
-    <script src="js/kasm.js"></script>
+    <script type="module" src="./js/kasm-api.js"></script>
+    <script type="module" src="./js/api-client.js"></script>
+    <script type="module" src="./js/chat.js"></script>
+    <script type="module" src="./js/kasm.js"></script>
 
     <!-- Error handling for scripts -->
     <script>
