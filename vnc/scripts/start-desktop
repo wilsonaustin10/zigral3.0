@@ -1,13 +1,51 @@
 #!/bin/bash
 
+# Kill any existing processes
+pkill -f Xvfb
+pkill -f x11vnc
+pkill -f chrome
+pkill -f lxde
+pkill -f dbus-daemon
+
+# Set up environment variables
 export DISPLAY=:99
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
+
+# Create necessary directories
+mkdir -p /run/user/$(id -u)
+mkdir -p /tmp/.X11-unix
+
+# Start D-Bus daemon
+dbus-daemon --session --address=$DBUS_SESSION_BUS_ADDRESS &
+sleep 2
 
 # Start Xvfb
-Xvfb :99 -screen 0 1280x720x24 &
+Xvfb :99 -screen 0 1920x1080x24 &
 sleep 2
 
 # Start LXDE
-exec startlxde &
+/usr/bin/startlxde &
+sleep 5
 
-# Start x11vnc
-x11vnc -display :99 -rfbport 5900 -forever -nopw -listen localhost -shared -xkb
+# Start x11vnc with better performance settings
+x11vnc -display :99 \
+    -rfbport 5900 \
+    -forever \
+    -nopw \
+    -shared \
+    -xkb \
+    -ncache 10 \
+    -ncache_cr &
+sleep 2
+
+# Start Chrome (non-headless, with window manager)
+google-chrome-stable \
+    --no-sandbox \
+    --disable-dev-shm-usage \
+    --start-maximized \
+    --no-first-run \
+    --no-default-browser-check \
+    "https://zigral.ai" &
+
+# Keep script running
+tail -f /dev/null

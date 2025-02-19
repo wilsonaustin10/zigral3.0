@@ -1,8 +1,11 @@
 #!/bin/bash
 
-exec websockify \
+# Kill any existing websockify processes
+pkill -f websockify
+
+# Start websockify with explicit options
+websockify \
     --web /usr/share/novnc \
-    --cert /etc/nginx/ssl/novnc.crt \
-    --key /etc/nginx/ssl/novnc.key \
+    --heartbeat 30 \
     --verbose \
     6081 localhost:5900
