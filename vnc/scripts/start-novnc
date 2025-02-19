@@ -1,0 +1,8 @@
+#!/bin/bash
+
+exec websockify \
+    --web /usr/share/novnc \
+    --cert /etc/nginx/ssl/novnc.crt \
+    --key /etc/nginx/ssl/novnc.key \
+    --verbose \
+    6081 localhost:5900

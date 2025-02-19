@@ -1,0 +1,12 @@
+[Unit]
+Description=noVNC Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/start-novnc
+Restart=always
+User=wilson_austin10
+
+[Install]
+WantedBy=multi-user.target
