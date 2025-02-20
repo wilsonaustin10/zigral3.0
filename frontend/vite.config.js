@@ -11,6 +11,13 @@ export default defineConfig(({ command, mode }) => {
         server: {
             port: 5173,
             proxy: {
+                '/vnc': {
+                    target: `${env.VNC_HOST}:${env.VNC_PORT}`,
+                    ws: true,
+                    secure: false,
+                    changeOrigin: true,
+                    rewrite: (path) => path.replace(/^\/vnc/, ''),
+                },
                 '/kasm-proxy': {
                     target: env.VITE_KASM_HOST || 'https://34.136.51.93:443',
                     changeOrigin: true,
@@ -54,7 +61,8 @@ export default defineConfig(({ command, mode }) => {
                         });
                     }
                 }
-            }
+            },
+            cors: true
         },
         build: {
             outDir: 'dist',

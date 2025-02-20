@@ -32,38 +32,29 @@
             </div>
         </div>
         
-        <!-- Main content area for Kasm embed -->
-        <div class="main">
-            <div class="main-header">
-                <h2>Virtual Desktop</h2>
-                <div class="controls">
-                    <button id="refresh-kasm" class="control-button">
-                        <span class="icon">🔄</span>
-                        Refresh
-                    </button>
-                    <button id="fullscreen-kasm" class="control-button">
-                        <span class="icon">⛶</span>
-                        Fullscreen
-                    </button>
-                </div>
+        <!-- Main content area for VNC embed -->
+        <div class="content-area">
+            <div class="control-panel">
+                <button id="refresh-vnc" class="control-button">
+                    <i class="fas fa-sync"></i> Refresh
+                </button>
+                <button id="fullscreen-vnc" class="control-button">
+                    <i class="fas fa-expand"></i> Fullscreen
+                </button>
             </div>
-            <div class="iframe-container loading">
-                <iframe id="kasm-iframe"
-                        src="about:blank" 
-                        allow="autoplay; microphone; camera; clipboard-read; clipboard-write; window-management"
-                        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads"
-                        loading="lazy"
-                        title="Kasm Workspace">
-                </iframe>
-            </div>
+            
+            <iframe id="vnc-iframe"
+                class="workspace-frame"
+                src=""
+                frameborder="0"
+                allowfullscreen="true"
+                title="VNC Workspace">
+            </iframe>
         </div>
     </div>
 
     <!-- Scripts -->
-    <script type="module" src="./js/kasm-api.js"></script>
-    <script type="module" src="./js/api-client.js"></script>
-    <script type="module" src="./js/chat.js"></script>
-    <script type="module" src="./js/kasm.js"></script>
+    <script type="module" src="./js/vnc-client.js"></script>
 
     <!-- Error handling for scripts -->
     <script>
