@@ -35,8 +35,7 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "your_jwt_secret_here"
     JWT_ALGORITHM: str = "HS256"
     
-    # VDI Configuration
-    VIRTUAL_DESKTOP_MODE: bool = True
+    # Browser Automation Configuration
     ENABLE_VIDEO_STREAM: bool = False
     
     # VNC Configuration

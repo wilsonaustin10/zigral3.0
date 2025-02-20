@@ -98,3 +98,9 @@ kasm_release*.tar.gz
 # Kasm configuration
 frontend/js/kasm.js
 
+# VNC files
+vnc.token
+vnc.log
+.vnc/
+novnc_proxy.pid
+
