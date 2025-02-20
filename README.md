@@ -42,59 +42,10 @@ Zigral is an AI-powered sales prospecting and outreach automation platform.
    ```
 
 5. **Access the VDI Interface**
-   - Open `https://localhost:6901` in your browser
-   - Use the default credentials (change in production):
-     - Username: kasm_user
-     - Password: password123
+   - Open `http://34.174.193.245:6080/vnc.html` in your browser
+   - The VNC viewer will connect automatically to the Chrome environment
 
 ## Development
 
 1. **Run Tests**
-   ```bash
-   # Run all tests
-   poetry run pytest
-   
-   # Run VDI integration tests
-   poetry run pytest tests/integration/test_vdi_setup.py -v
    ```
-
-2. **Code Style**
-   ```bash
-   # Format code
-   poetry run black .
-   
-   # Sort imports
-   poetry run isort .
-   
-   # Lint
-   poetry run flake8
-   ```
-
-## Documentation
-
-- [VDI Setup Instructions](docs/VDIinstructions.md)
-- [Phase 3 Implementation Plan](docs/phase3.md)
-- [Development Guide](docs/development.md)
-
-## Architecture
-
-Zigral consists of several components:
-- VDI Environment (Kasm Workspaces)
-- Orchestrator Service
-- Context Manager
-- Agent Services (Lincoln, Shaun)
-- PostgreSQL Database
-
-## Security
-
-- Change default passwords in production
-- Use proper SSL certificates
-- Follow security best practices in [VDI Instructions](docs/VDIinstructions.md)
-
-## License
-
-[Your License Here]
-
-## Contributing
-
-[Your Contributing Guidelines Here] 

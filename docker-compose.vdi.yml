@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  vnc:
+    build:
+      context: .
+      dockerfile: Dockerfile.vdi
+    ports:
+      - "6080:6080"  # noVNC web interface
+    environment:
+      - DISPLAY=:0
+      - RESOLUTION=1920x1080x24
+    volumes:
+      - ./workspace:/workspace
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "6080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - VIRTUAL_DESKTOP_MODE=true
+      - ENABLE_VIDEO_STREAM=false
+    volumes:
+      - ./workspace:/workspace
+    depends_on:
+      vnc:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G 

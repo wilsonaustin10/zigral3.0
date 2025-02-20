@@ -39,9 +39,9 @@ class Settings(BaseSettings):
     VIRTUAL_DESKTOP_MODE: bool = True
     ENABLE_VIDEO_STREAM: bool = False
     
-    # Kasm Configuration
-    KASM_USER: str = "kasm_user"
-    KASM_PASSWORD: str = "password123"
+    # VNC Configuration
+    VNC_HOST: str = "34.174.193.245"
+    VNC_PORT: int = 6080
     
     # Google Sheets Configuration
     GOOGLE_SHEETS_CREDENTIALS_JSON: Optional[str] = None

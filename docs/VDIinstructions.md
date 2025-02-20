@@ -1,83 +1,72 @@
-# Virtual Desktop Infrastructure (VDI) Setup Instructions
+# VDI Setup Instructions
 
-## Overview
-
-This document provides instructions for setting up and testing the Virtual Desktop Infrastructure (VDI) environment for Zigral using Kasm Workspaces.
+This document provides instructions for setting up and testing the Virtual Desktop Infrastructure (VDI) environment for Zigral using noVNC with Chrome browser.
 
 ## Prerequisites
 
-- Docker Desktop installed and running
-- Python 3.12 or higher
-- Poetry package manager
-- Git
+1. Docker and Docker Compose installed
+2. Git repository cloned locally
+3. `.env` file configured with VNC settings
 
-## Setup Instructions
+## Setup Steps
 
-1. **Clone the Repository**
+1. **Build the VDI Container**
    ```bash
-   git clone https://github.com/your-org/zigral.git
-   cd zigral
+   docker-compose -f docker-compose.vdi.yml build
    ```
 
-2. **Install Dependencies**
-   ```bash
-   poetry install --with test
-   ```
-
-3. **Configure Environment**
-   - Copy `.env.example` to `.env`
-   - Set required environment variables:
-     ```bash
-     VIRTUAL_DESKTOP_MODE=True
-     ENABLE_VIDEO_STREAM=False
-     ```
-
-4. **Start the VDI Environment**
+2. **Start the VDI Services**
    ```bash
    docker-compose -f docker-compose.vdi.yml up -d
    ```
 
-5. **Access the Kasm Web Interface**
-   - Open `https://localhost:6901` in your browser
-   - Default credentials:
-     - Username: kasm_user
-     - Password: password123
-   - Note: The interface uses a self-signed certificate, so you'll need to accept the security warning
-
-## Testing
-
-1. **Run Integration Tests**
+3. **Verify Container Status**
    ```bash
-   poetry run pytest tests/integration/test_vdi_setup.py -v
+   docker-compose -f docker-compose.vdi.yml ps
    ```
 
-   This will test:
-   - Docker configuration files
-   - Container startup
-   - Web interface accessibility
-   - Resource limits
-   - Orchestrator integration
+4. **Check Container Logs**
+   ```bash
+   docker-compose -f docker-compose.vdi.yml logs -f
+   ```
 
-2. **Manual Testing**
-   - Verify the Kasm web interface is accessible
-   - Check container resource limits
-   - Test orchestrator connectivity
+5. **Access the noVNC Interface**
+   - Open your browser and navigate to: `http://34.174.193.245:6080/vnc.html`
+   - The VNC viewer will connect automatically
+
+## Testing the Setup
+
+1. **Basic Connectivity Test**
+   - Verify the noVNC web interface is accessible at `http://34.174.193.245:6080/vnc.html`
+   - Confirm you can see the Chrome browser
+   - Test mouse and keyboard interaction
+
+2. **Browser Automation Test**
+   - Open Chrome in the VNC session
+   - Navigate to a test URL
+   - Verify that browser automation commands work
+
+3. **Integration Test**
+   - Test the connection between the orchestrator and VNC
+   - Verify that agents can control the browser
+   - Check that screenshots and recordings work
 
 ## Troubleshooting
 
-1. **Container Not Starting**
-   - Check Docker logs: `docker logs <container_id>`
-   - Verify port 6901 is not in use
-   - Ensure Docker has sufficient resources
+1. **Connection Issues**
+   - Check if the VNC server is running
+   - Verify port 6080 is accessible
+   - Check container logs for errors
 
-2. **Web Interface Not Accessible**
-   - Verify Docker is running
-   - Check container status: `docker ps`
-   - Ensure correct credentials are being used
+2. **Performance Issues**
+   - Adjust screen resolution if needed
+   - Check CPU and memory usage
+   - Verify network connectivity
 
-3. **Authentication Issues**
-   - Verify environment variables are set correctly
-   - Check container logs for authentication errors
+## Additional Resources
+
+- [noVNC Documentation](https://novnc.com/docs/index.html)
+- [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)
 
 ## Security Notes
 

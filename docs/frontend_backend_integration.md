@@ -1,4 +1,4 @@
-# Implementation Plan & Checklist for Frontend–Backend Integration
+# Frontend-Backend Integration Guide
 
 ## 1. Overview
 
@@ -6,12 +6,12 @@
 - [ ] **Key Components to Integrate:**
   - [x] **Frontend Chat Interface:** Already built using a modern framework with state management.
   - [x] **Backend Orchestrator:** Exposes REST/WebSocket endpoints to process commands and dispatch tasks.
-  - [ ] **Kasm Iframe:** Embedded in the frontend to display live agent operations.
+  - [ ] **noVNC Iframe:** Embedded in the frontend to display live agent operations.
   - [ ] **HITL and RL Feedback Endpoints:** Allow users to provide feedback and guide agent actions.
 
 ---
 
-## 2. Detailed Step-by-Step Process
+## 2. Implementation Steps
 
 ### 2.1 Finalize API Endpoints on the Backend
 
@@ -45,12 +45,13 @@
 
 ---
 
-### 2.3 Iframe Embedding of Kasm
+### 2.3 Iframe Embedding of noVNC
 
-**2.3.A. Embed the Kasm VDI**
-- [ ] Confirm the iframe's source URL is served over HTTPS.
-- [ ] Set appropriate sandbox attributes.
-- [ ] Use postMessage for secure communication if needed.
+**2.3.A. Embed the noVNC Viewer**
+- [ ] Confirm the noVNC server URL is served over HTTPS
+- [ ] Set appropriate sandbox attributes for the iframe
+- [ ] Use postMessage for secure communication if needed
+- [ ] Implement proper error handling and reconnection logic
 
 ---
 
@@ -74,13 +75,13 @@
 
 - [x] Verify that the frontend chat UI sends commands to the orchestrator endpoint and displays responses.
 - [x] Ensure the orchestrator validates commands, updates context, and dispatches tasks to agents.
-- [x] Confirm that the WebSocket (or polling) mechanism pushes real-time updates to the frontend.
-- [ ] Embed the Kasm VDI securely in an iframe and verify communication via `postMessage` if needed.
-- [ ] Integrate the Agent Manager Dashboard to display agent status, activity streams, and video streaming toggles.
-- [ ] Implement the feedback loop in the frontend to capture HITL responses and send them to the `/feedback` endpoint.
-- [ ] Test the complete integration locally using Docker Compose and monitor logs.
-- [ ] Ensure all endpoints are secured with HTTPS and proper authentication mechanisms.
-- [x] Document all configuration changes and update the README with instructions for running the integrated system.
+- [x] Confirm that the WebSocket mechanism pushes real-time updates to the frontend.
+- [ ] Embed the noVNC viewer securely in an iframe and verify communication.
+- [ ] Integrate the Agent Manager Dashboard to display agent status and activity streams.
+- [ ] Implement the feedback loop in the frontend to capture HITL responses.
+- [ ] Test the complete integration locally and monitor logs.
+- [ ] Ensure all endpoints are secured with HTTPS and proper authentication.
+- [x] Document all configuration changes and update the README.
 
 ---
 
@@ -143,4 +144,4 @@
 
 ## Conclusion
 
-This implementation plan and checklist provide a clear, step-by-step process to connect the Zigral frontend with the backend services. The plan ensures that user commands from the chat UI are processed by the orchestrator, agent actions are displayed via the Kasm iframe, and real-time updates and HITL feedback are integrated into the Agent Manager Dashboard. By following this guide, you'll be well positioned to complete the MVP by 2/15. 
+This implementation plan and checklist provide a clear, step-by-step process to connect the Zigral frontend with the backend services. The plan ensures that user commands from the chat UI are processed by the orchestrator, agent actions are displayed via the noVNC iframe, and real-time updates and HITL feedback are integrated into the Agent Manager Dashboard. By following this guide, you'll be well positioned to complete the MVP by 2/15. 

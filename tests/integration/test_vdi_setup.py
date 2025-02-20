@@ -42,162 +42,79 @@ def test_dockerfile_vdi_exists():
     with open(dockerfile) as f:
         content = f.read()
         # Check for required components
-        assert "FROM kasmweb/desktop:1.14.0" in content, "Base image not correctly specified"
-        assert "python3.12" in content, "Python 3.12 not specified in dependencies"
-        assert "WORKDIR /app" in content, "Working directory not set"
-        assert "VOLUME /workspace" in content, "Workspace volume not defined"
+        assert "FROM ubuntu:20.04" in content, "Base image not correctly specified"
+        assert "novnc" in content, "noVNC not installed"
+        assert "chromium-browser" in content, "Chrome browser not installed"
 
 def test_required_ports_in_compose():
     """Test that required ports are exposed in docker-compose.vdi.yml."""
     with open("docker-compose.vdi.yml") as f:
         compose = yaml.safe_load(f)
-        kasm_service = compose["services"]["kasm"]
+        vnc_service = compose["services"]["vnc"]
         
-        # Check Kasm port mapping
-        ports = kasm_service.get("ports", [])
-        assert any("6901:6901" in port for port in ports), "Kasm web interface port (6901) not properly mapped"
+        # Check VNC port mapping
+        ports = vnc_service.get("ports", [])
+        assert any("6080:6080" in port for port in ports), "VNC web interface port (6080) not properly mapped"
 
 def test_required_environment_variables():
     """Test that required environment variables are defined."""
     with open("docker-compose.vdi.yml") as f:
         compose = yaml.safe_load(f)
-        kasm_service = compose["services"]["kasm"]
-        env = kasm_service.get("environment", [])
+        vnc_service = compose["services"]["vnc"]
+        env = vnc_service.get("environment", [])
         
         # Convert list of env vars to dict if necessary
         if isinstance(env, list):
             env = dict(var.split("=") for var in env if "=" in var)
         
-        assert "VNC_PW" in env, "VNC password not set"
-        assert "KASM_USER" in env, "Kasm user not set"
+        assert "DISPLAY=:0" in env, "Display not set"
+        assert "RESOLUTION=1920x1080x24" in env, "Resolution not set"
 
 @pytest.mark.skipif(not DOCKER_AVAILABLE, reason="Docker is not available")
 @pytest.mark.integration
-def test_kasm_container_starts():
-    """Test that Kasm container can start successfully."""
-    container = None
+def test_vnc_container_starts():
+    """Test that VNC container can start successfully."""
     try:
-        print("\nStarting Kasm container...")
+        # Try to connect to the web interface
+        print("Attempting to connect to web interface...")
+        response = requests.get("http://34.174.193.245:6080/vnc.html")
         
-        # Define credentials
-        username = 'kasm_user'
-        password = 'password123'
-        
-        # Start the container with explicit port mapping
-        container = docker_client.containers.run(
-            "kasmweb/desktop:1.14.0",
-            detach=True,
-            ports={'6901/tcp': 6902},  # Map container port 6901 to host port 6902
-            environment={
-                'VNC_PW': password,
-                'VNC_UN': username,
-                'KASM_VNC_UN': username,
-                'KASM_VNC_PW': password
-            }
-        )
-        
-        print("Container created, waiting for it to start...")
-        
-        # Wait for container to be ready
-        max_wait = 30  # Maximum wait time in seconds
-        start_time = time.time()
-        ready = False
-        last_error = None
-        
-        # Create basic auth header
-        auth_header = base64.b64encode(f"{username}:{password}".encode()).decode()
-        headers = {
-            'Authorization': f'Basic {auth_header}'
-        }
-        
-        while time.time() - start_time < max_wait:
-            try:
-                # Reload container info
-                container.reload()
-                
-                # Check container state
-                state = container.attrs['State']
-                status = state['Status']
-                print(f"\nContainer status: {status}")
-                
-                if status != 'running':
-                    print("Container not yet running, waiting...")
-                    time.sleep(1)
-                    continue
-                
-                # Try to connect to the web interface
-                print("Attempting to connect to web interface...")
-                response = requests.get(
-                    'https://localhost:6902',  # Updated port number
-                    verify=False,
-                    timeout=5,
-                    headers=headers
-                )
-                
-                print(f"Response status: {response.status_code}")
-                if response.status_code in [200, 301, 302]:
-                    ready = True
-                    print("Successfully connected to Kasm web interface")
-                    break
-                else:
-                    print(f"Received status code {response.status_code}")
-                    print("Response headers:", response.headers)
-                    
-            except requests.exceptions.RequestException as e:
-                last_error = str(e)
-                print(f"Connection attempt failed: {last_error}")
-                
-                # Print container logs
-                print("\nContainer logs:")
-                print(container.logs().decode('utf-8'))
-                
-                time.sleep(1)
-                
-        if not ready:
-            logs = container.logs().decode('utf-8')
-            raise AssertionError(
-                f"Container did not become ready within {max_wait} seconds.\n"
-                f"Last error: {last_error}\n"
-                f"Container logs:\n{logs}"
-            )
+        print(f"Response status: {response.status_code}")
+        assert response.status_code == 200, "VNC web interface not responding"
+        print("Successfully connected to VNC web interface")
             
-        # Final assertions
-        assert container.status == "running", "Container should be running"
-        response = requests.get(
-            "https://localhost:6902",  # Updated port number
-            verify=False,
-            headers=headers
-        )
-        assert response.status_code in [200, 301, 302], "Kasm web interface not responding"
-        
-    finally:
-        if container:
-            try:
-                print("\nCleaning up container...")
-                container.stop()
-                container.remove()
-            except Exception as e:
-                print(f"Error during cleanup: {e}")
+    except requests.exceptions.RequestException as e:
+        pytest.fail(f"Failed to connect to VNC: {str(e)}")
 
 @pytest.mark.integration
-def test_orchestrator_integration():
-    """Test that orchestrator can connect to Kasm container."""
+def test_orchestrator_vnc_integration():
+    """Test that orchestrator can connect to VNC container."""
     with open("docker-compose.vdi.yml") as f:
         compose = yaml.safe_load(f)
         
         # Verify orchestrator service configuration
         orchestrator = compose["services"]["orchestrator"]
-        assert "kasm" in orchestrator.get("depends_on", []), "Orchestrator should depend on kasm service"
-        assert "VIRTUAL_DESKTOP_MODE" in str(orchestrator.get("environment", [])), "VIRTUAL_DESKTOP_MODE not set for orchestrator"
+        assert "vnc" in orchestrator.get("depends_on", []), "Orchestrator should depend on VNC service"
+        
+        # Check VNC service configuration
+        vnc_service = compose["services"]["vnc"]
+        
+        # Check resource limits
+        deploy = vnc_service.get("deploy", {})
+        resources = deploy.get("resources", {})
+        limits = resources.get("limits", {})
+        
+        assert "cpus" in limits, "CPU limits not set"
+        assert "memory" in limits, "Memory limits not set"
 
 def test_resource_limits():
     """Test that resource limits are properly configured."""
     with open("docker-compose.vdi.yml") as f:
         compose = yaml.safe_load(f)
-        kasm_service = compose["services"]["kasm"]
+        vnc_service = compose["services"]["vnc"]
         
         # Check resource limits
-        deploy = kasm_service.get("deploy", {})
+        deploy = vnc_service.get("deploy", {})
         resources = deploy.get("resources", {})
         limits = resources.get("limits", {})
         
