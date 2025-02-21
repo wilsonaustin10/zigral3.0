@@ -1,57 +1,102 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: zigral
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  orchestrator:
-    build:
+  # Main Zigral API service
+  zigral-api:
+    build: 
       context: .
       dockerfile: Dockerfile
-    environment:
-      - SERVICE_NAME=orchestrator
-      - DATABASE_URL=postgresql://user:password@postgres:5432/zigral
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - DEBUG=True
-      - LOG_LEVEL=DEBUG
     ports:
       - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./logs:/app/logs
-      - ./checkpoints:/app/checkpoints
     depends_on:
-      postgres:
+      agent-vm:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  context-manager:
+  # VM for running agents with VNC
+  agent-vm:
     build:
       context: .
-      dockerfile: Dockerfile
-    environment:
-      - SERVICE_NAME=context-manager
-      - DATABASE_URL=postgresql://user:password@postgres:5432/zigral
-      - DEBUG=True
-      - LOG_LEVEL=DEBUG
+      dockerfile: Dockerfile.vm
     ports:
-      - "8001:8001"
+      - "5900:5900"  # VNC
+      - "6080:6080"  # noVNC web client
     volumes:
-      - ./logs:/app/logs
+      - ./src/agents:/app/agents
+      - ./shared:/shared
+      - ./logs/agents:/var/log/agents
+    environment:
+      - DISPLAY=:0
+      - RESOLUTION=1920x1080x24
+      - VNC_PASSWORD=${VNC_PASSWORD:-}
+      - REDIS_URL=redis://redis:6379/0
+    privileged: true  # Required for browser automation
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "6080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    
+  # Redis for state management and caching
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  # Monitoring service
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
     depends_on:
-      postgres:
-        condition: service_healthy
+      - zigral-api
+      - agent-vm
+
+  # Visualization
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
 
 volumes:
-  postgres_data: 
+  redis-data:
+  prometheus-data:
+  grafana-data: 

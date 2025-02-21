@@ -1,0 +1,50 @@
+FROM debian:bookworm-slim
+
+# Prevent interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive \
+    DISPLAY=:0 \
+    RESOLUTION=1920x1080x24 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Install required packages
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    xvfb \
+    x11vnc \
+    python3-websockify \
+    novnc \
+    chromium \
+    supervisor \
+    nginx \
+    curl \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up Python environment
+WORKDIR /app
+COPY requirements-vnc.txt .
+RUN pip3 install --no-cache-dir -r requirements-vnc.txt
+
+# Copy application code
+COPY src/agents agents/
+COPY src/utils utils/
+
+# Set up VNC and noVNC
+RUN mkdir -p /root/.vnc /var/log/supervisor
+
+# Copy configuration files
+COPY docker/config/nginx.conf /etc/nginx/sites-available/default
+COPY docker/config/supervisord.conf /etc/supervisor/conf.d/
+COPY docker/scripts/start.sh /usr/local/bin/
+
+# Make scripts executable
+RUN chmod +x /usr/local/bin/start.sh
+
+# Create directories for shared data and logs
+RUN mkdir -p /shared /var/log/agents
+
+EXPOSE 5900 6080
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"] 
