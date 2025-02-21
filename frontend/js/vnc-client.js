@@ -7,14 +7,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const vncIframe = document.getElementById('vnc-iframe');
     const refreshButton = document.getElementById('refresh-vnc');
     const fullscreenButton = document.getElementById('fullscreen-vnc');
+    const chatInput = document.getElementById('chat-input');
+    const sendButton = document.getElementById('send-button');
 
     // VNC Configuration
     const VNC_HOST = 'http://34.174.193.245';
     const VNC_PORT = '6080';
     const VNC_PATH = '/vnc.html';
     
-    // Construct the VNC URL
-    const vncUrl = `${VNC_HOST}:${VNC_PORT}${VNC_PATH}`;
+    // Construct the VNC URL with proper parameters
+    const vncUrl = `${VNC_HOST}:${VNC_PORT}${VNC_PATH}?autoconnect=true&resize=remote&quality=8&compression=2&view_only=0`;
 
     // Track connection state
     let isConnected = false;
@@ -72,6 +74,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Check if VNC server is accessible
             await checkVncConnection();
             
+            // Add loading state
+            vncIframe.parentNode.classList.add('loading');
+            
             // Set the iframe source to the VNC viewer URL
             vncIframe.src = vncUrl;
             
@@ -81,9 +86,14 @@ document.addEventListener('DOMContentLoaded', () => {
             // Set sandbox attributes for security while allowing necessary features
             vncIframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals';
             
-            console.log('VNC viewer initialized:', vncUrl);
-            isConnected = true;
-            reconnectAttempts = 0;
+            // Handle iframe load
+            vncIframe.onload = () => {
+                vncIframe.parentNode.classList.remove('loading');
+                isConnected = true;
+                reconnectAttempts = 0;
+                console.log('VNC viewer initialized:', vncUrl);
+            };
+            
         } catch (error) {
             console.error('Failed to initialize VNC viewer:', error);
             showError('Failed to connect to VNC server', error.message);
@@ -96,6 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Add refresh button handler
     refreshButton.addEventListener('click', () => {
+        vncIframe.parentNode.classList.add('loading');
         reconnectAttempts = 0;
         initializeVncViewer();
     });
@@ -115,5 +126,28 @@ document.addEventListener('DOMContentLoaded', () => {
     vncIframe.addEventListener('error', (event) => {
         showError('Failed to load VNC viewer', event.message);
         retryConnection();
+    });
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        if (isConnected) {
+            // Notify the VNC client about the size change
+            try {
+                const vncDoc = vncIframe.contentWindow.document;
+                const event = new Event('resize');
+                vncDoc.dispatchEvent(event);
+            } catch (e) {
+                console.warn('Could not propagate resize event to VNC iframe:', e);
+            }
+        }
+    });
+
+    // Prevent VNC viewer from capturing all keyboard input when chat is focused
+    chatInput.addEventListener('focus', () => {
+        vncIframe.style.pointerEvents = 'none';
+    });
+
+    chatInput.addEventListener('blur', () => {
+        vncIframe.style.pointerEvents = 'auto';
     });
 }); 

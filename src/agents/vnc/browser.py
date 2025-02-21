@@ -1,17 +1,18 @@
 """Browser command execution and session management for VNC agent.
 
 This module provides classes for managing browser sessions and executing browser
-commands through VNC using pyautogui for GUI automation.
+commands through VNC using Playwright for browser automation.
 """
 
 import asyncio
 import logging
-import pyautogui
-import time
-from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Any
 from enum import Enum
+from pathlib import Path
+
+from playwright.async_api import async_playwright, Browser, Page, BrowserContext
+from pydantic import BaseModel
 
 from .utils.config import Settings
 
@@ -25,16 +26,15 @@ class BrowserCommandStatus(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
-@dataclass
-class BrowserCommand:
+class BrowserCommand(BaseModel):
     """Represents a browser command with its parameters and status."""
     command_type: str
-    parameters: Dict
+    parameters: Dict[str, Any]
     status: BrowserCommandStatus = BrowserCommandStatus.PENDING
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
-    result: Optional[Dict] = None
+    result: Optional[Dict[str, Any]] = None
 
 class BrowserSession:
     """Manages a browser session and its state."""
@@ -48,14 +48,56 @@ class BrowserSession:
         self.is_active = True
         self.current_url: Optional[str] = None
         self.current_command: Optional[BrowserCommand] = None
-        
-        # Initialize pyautogui settings
-        pyautogui.FAILSAFE = True
-        pyautogui.PAUSE = 0.5  # Add small delay between actions
+        self._browser: Optional[Browser] = None
+        self._context: Optional[BrowserContext] = None
+        self._page: Optional[Page] = None
+        self._screenshots_dir = Path("captures/screenshots")
+        self._html_dir = Path("captures/html")
         
         logger.info(f"Browser session {session_id} initialized")
     
-    async def execute_command(self, command: BrowserCommand) -> Dict:
+    async def initialize(self) -> None:
+        """Initialize the browser session."""
+        try:
+            playwright = await async_playwright().start()
+            self._browser = await playwright.chromium.launch(
+                headless=False,
+                args=['--start-maximized', '--no-sandbox']
+            )
+            self._context = await self._browser.new_context(
+                viewport={'width': 1920, 'height': 1080},
+                accept_downloads=True
+            )
+            self._page = await self._context.new_page()
+            
+            # Setup error handling
+            self._page.on("console", lambda msg: 
+                logger.error(f"Browser console error: {msg.text}") 
+                if msg.type == "error" else None
+            )
+            
+            # Create capture directories
+            self._screenshots_dir.mkdir(parents=True, exist_ok=True)
+            self._html_dir.mkdir(parents=True, exist_ok=True)
+            
+            logger.info("Browser session initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize browser session: {str(e)}")
+            raise
+    
+    async def cleanup(self) -> None:
+        """Clean up browser resources."""
+        try:
+            if self._context:
+                await self._context.close()
+            if self._browser:
+                await self._browser.close()
+            logger.info("Browser resources cleaned up")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {str(e)}")
+    
+    async def execute_command(self, command: BrowserCommand) -> Dict[str, Any]:
         """Execute a browser command and return the result."""
         try:
             self.current_command = command
@@ -81,93 +123,90 @@ class BrowserSession:
             command.completed_at = datetime.now()
             return {"status": "error", "error": str(e)}
     
-    async def _execute_command_by_type(self, command: BrowserCommand) -> Dict:
+    async def _execute_command_by_type(self, command: BrowserCommand) -> Dict[str, Any]:
         """Execute a specific type of browser command."""
         command_handlers = {
             "navigate": self._navigate,
             "click": self._click,
-            "type": self._type_text,
+            "type": self._type,
+            "wait_for_selector": self._wait_for_selector,
+            "get_text": self._get_text,
+            "screenshot": self._take_screenshot,
             "scroll": self._scroll,
-            "wait": self._wait,
-            "find_element": self._find_element,
+            "evaluate": self._evaluate,
+            "wait_for_navigation": self._wait_for_navigation,
         }
         
         handler = command_handlers.get(command.command_type)
         if not handler:
             raise ValueError(f"Unknown command type: {command.command_type}")
         
-        return await handler(command.parameters)
+        return await handler(**command.parameters)
     
-    async def _navigate(self, params: Dict) -> Dict:
-        """Navigate to a URL."""
-        url = params.get("url")
-        if not url:
-            raise ValueError("URL parameter is required")
-        
-        # Simulate clicking address bar and typing URL
-        await self._click_address_bar()
-        await self._type_text({"text": url})
-        pyautogui.press("enter")
-        
-        # Wait for page load
-        await asyncio.sleep(2)  # Basic wait, can be improved
+    async def _navigate(self, url: str, wait_until: str = "networkidle") -> Dict[str, Any]:
+        """Navigate to a URL and wait for page load."""
+        await self._page.goto(url, wait_until=wait_until)
         self.current_url = url
-        return {"url": url}
+        return {"url": url, "title": await self._page.title()}
     
-    async def _click(self, params: Dict) -> Dict:
-        """Click at specified coordinates or on an element."""
-        x = params.get("x")
-        y = params.get("y")
-        if x is None or y is None:
-            raise ValueError("x and y coordinates are required")
+    async def _click(self, selector: str, timeout: int = 5000) -> Dict[str, Any]:
+        """Click an element matching the selector."""
+        element = await self._page.wait_for_selector(selector, timeout=timeout)
+        await element.click()
+        return {"selector": selector}
+    
+    async def _type(self, selector: str, text: str, timeout: int = 5000) -> Dict[str, Any]:
+        """Type text into an element matching the selector."""
+        element = await self._page.wait_for_selector(selector, timeout=timeout)
+        await element.fill(text)
+        return {"selector": selector, "text": text}
+    
+    async def _wait_for_selector(self, selector: str, timeout: int = 5000) -> Dict[str, Any]:
+        """Wait for an element matching the selector to appear."""
+        await self._page.wait_for_selector(selector, timeout=timeout)
+        return {"selector": selector}
+    
+    async def _get_text(self, selector: str, timeout: int = 5000) -> Dict[str, Any]:
+        """Get text content of an element matching the selector."""
+        element = await self._page.wait_for_selector(selector, timeout=timeout)
+        text = await element.text_content()
+        return {"selector": selector, "text": text}
+    
+    async def _take_screenshot(self, name: Optional[str] = None) -> Dict[str, str]:
+        """Take a screenshot of the current page."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{name}_{timestamp}" if name else timestamp
         
-        pyautogui.click(x, y)
-        return {"x": x, "y": y}
-    
-    async def _type_text(self, params: Dict) -> Dict:
-        """Type text at current position."""
-        text = params.get("text")
-        if not text:
-            raise ValueError("text parameter is required")
+        screenshot_path = self._screenshots_dir / f"{filename}.png"
+        html_path = self._html_dir / f"{filename}.html"
         
-        pyautogui.typewrite(text)
-        return {"text": text}
-    
-    async def _scroll(self, params: Dict) -> Dict:
-        """Scroll the page."""
-        amount = params.get("amount", 0)
-        pyautogui.scroll(amount)
-        return {"amount": amount}
-    
-    async def _wait(self, params: Dict) -> Dict:
-        """Wait for specified duration."""
-        duration = params.get("duration", 1)
-        await asyncio.sleep(duration)
-        return {"duration": duration}
-    
-    async def _find_element(self, params: Dict) -> Dict:
-        """Find an element on the page using image recognition."""
-        image_path = params.get("image_path")
-        if not image_path:
-            raise ValueError("image_path parameter is required")
+        await self._page.screenshot(path=str(screenshot_path), full_page=True)
+        html_content = await self._page.content()
+        html_path.write_text(html_content, encoding='utf-8')
         
-        try:
-            location = pyautogui.locateOnScreen(image_path, confidence=0.9)
-            if location:
-                return {
-                    "found": True,
-                    "x": location.left + location.width / 2,
-                    "y": location.top + location.height / 2
-                }
-            return {"found": False}
-        except Exception as e:
-            logger.error(f"Error finding element: {str(e)}")
-            return {"found": False, "error": str(e)}
+        return {
+            "screenshot": str(screenshot_path),
+            "html": str(html_path)
+        }
     
-    async def _click_address_bar(self) -> None:
-        """Click the browser address bar."""
-        pyautogui.hotkey("command", "l")  # Cmd+L for Mac, Ctrl+L for Windows/Linux
-        await asyncio.sleep(0.1)
+    async def _scroll(self, selector: Optional[str] = None, distance: int = 0) -> Dict[str, Any]:
+        """Scroll the page or a specific element."""
+        if selector:
+            element = await self._page.wait_for_selector(selector)
+            await element.evaluate(f"el => el.scrollBy(0, {distance})")
+        else:
+            await self._page.evaluate(f"window.scrollBy(0, {distance})")
+        return {"distance": distance}
+    
+    async def _evaluate(self, script: str, arg: Optional[Any] = None) -> Dict[str, Any]:
+        """Evaluate JavaScript code in the page context."""
+        result = await self._page.evaluate(script, arg)
+        return {"result": result}
+    
+    async def _wait_for_navigation(self, timeout: int = 30000, wait_until: str = "networkidle") -> Dict[str, Any]:
+        """Wait for page navigation to complete."""
+        await self._page.wait_for_load_state(wait_until, timeout=timeout)
+        return {"url": self._page.url}
 
 class BrowserManager:
     """Manages multiple browser sessions."""
@@ -186,6 +225,7 @@ class BrowserManager:
             raise ValueError("Maximum number of sessions reached")
         
         session = BrowserSession(session_id, self.settings)
+        await session.initialize()
         self.sessions[session_id] = session
         return session
     
@@ -199,6 +239,7 @@ class BrowserManager:
     async def close_session(self, session_id: str) -> None:
         """Close a browser session."""
         session = await self.get_session(session_id)
+        await session.cleanup()
         session.is_active = False
         del self.sessions[session_id]
         logger.info(f"Session {session_id} closed")
