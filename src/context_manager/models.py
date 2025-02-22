@@ -81,7 +81,7 @@ class ContextEntry(ContextEntryBase):
 class ContextEntryDB(models.Model):
     """Tortoise ORM model for context entries"""
 
-    id = fields.IntField(pk=True)
+    id = fields.IntField(pk=True, generated=True)
     job_id = fields.CharField(max_length=255, db_index=True)
     job_type = fields.CharField(max_length=50)
     context_data = fields.JSONField()
