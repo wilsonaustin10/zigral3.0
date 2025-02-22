@@ -6,7 +6,7 @@ pydantic-settings==2.1.0
 python-dotenv==1.0.1
 
 # Browser automation
-playwright==1.41.2
+playwright[core]==1.41.2  # Core version without browser binaries
 pillow==10.2.0  # For image handling
 opencv-python==4.9.0.80  # For image recognition
 

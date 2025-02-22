@@ -23,9 +23,9 @@
 
 class ZigralAPI {
     constructor(config = {}) {
-        // Use production URLs
-        this.baseUrl = 'https://34.136.51.93:8000';
-        this.wsUrl = 'wss://34.136.51.93:8000';
+        // Use environment-based URLs
+        this.baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        this.wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
         this.token = config.token || 'zigral_dev_token_123';  // Default to dev token
         this.onUpdate = config.onUpdate || (() => {});
         this.onError = config.onError || console.error;
@@ -33,6 +33,7 @@ class ZigralAPI {
         this.ws = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
+        this.reconnectDelay = 1000; // Start with 1 second delay
     }
 
     /**
@@ -80,8 +81,9 @@ class ZigralAPI {
                 if (this.reconnectAttempts < this.maxReconnectAttempts) {
                     setTimeout(() => {
                         this.reconnectAttempts++;
+                        this.reconnectDelay *= 2; // Exponential backoff
                         this.connectWebSocket();
-                    }, 1000 * Math.pow(2, this.reconnectAttempts)); // Exponential backoff
+                    }, this.reconnectDelay);
                 } else {
                     this.onError('WebSocket connection failed after max attempts');
                 }
@@ -95,7 +97,9 @@ class ZigralAPI {
             // Wait for connection to be established
             await new Promise((resolve, reject) => {
                 this.ws.onopen = () => {
+                    console.log('WebSocket connected');
                     this.reconnectAttempts = 0;
+                    this.reconnectDelay = 1000; // Reset delay on successful connection
                     resolve();
                 };
                 setTimeout(() => reject(new Error('WebSocket connection timeout')), 5000);
@@ -123,7 +127,10 @@ class ZigralAPI {
             const data = await response.json();
             
             if (!response.ok) {
-                throw new Error(data.error || 'Failed to send command');
+                const error = new Error(data.detail || 'Failed to send command');
+                error.status = response.status;
+                error.type = data.error_type;
+                throw error;
             }
 
             return data;
@@ -139,6 +146,9 @@ class ZigralAPI {
     async healthCheck() {
         try {
             const response = await fetch(`${this.baseUrl}/health`);
+            if (!response.ok) {
+                throw new Error(`Health check failed with status: ${response.status}`);
+            }
             return await response.json();
         } catch (error) {
             this.onError('Health check failed:', error);

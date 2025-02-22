@@ -263,3 +263,8 @@ async def health_check():
         "service": "context-manager",
         "version": "3.0.0"
     })
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "context_manager"}

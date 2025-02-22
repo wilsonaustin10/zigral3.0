@@ -42,7 +42,7 @@ from contextlib import asynccontextmanager
 from typing import Dict, List, Optional, Union
 import os
 
-from fastapi import FastAPI, HTTPException, Request, Depends, status, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, Depends, status, WebSocket, WebSocketDisconnect, APIRouter
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
 from openai import APIStatusError
@@ -102,6 +102,18 @@ app.add_middleware(
 # Add rate limit error handler
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "orchestrator"}
+
+@app.on_event("startup")
+async def startup_event():
+    import sys
+    routes_info = "Registered routes: " + ", ".join([route.path for route in app.routes])
+    with open("/tmp/routes.log", "w") as f:
+        f.write(routes_info)
+    print(routes_info, file=sys.stdout)
 
 
 async def verify_token(token: str = Depends(oauth2_scheme)) -> str:
@@ -237,3 +249,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+# Debug endpoint added for troubleshooting
+@app.get("/inspect_routes")
+def inspect_routes():
+    return {"routes": [route.path for route in app.routes]}

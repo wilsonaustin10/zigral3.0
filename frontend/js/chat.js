@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize API client with dev token
     const api = new ZigralAPI({
-        token: 'zigral_dev_token_123',  // Explicitly set the dev token
+        token: 'zigral_dev_token_123',
         onUpdate: handleUpdate,
         onError: handleError
     });
@@ -18,12 +18,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const initialized = await api.initialize();
         if (initialized) {
             updateStatus('connected');
+            addMessage('Connected to Zigral. Ready to help!', false);
         } else {
             updateStatus('error');
+            addMessage('Failed to connect to Zigral. Please try refreshing the page.', false, 'error');
         }
     } catch (error) {
         updateStatus('error');
-        addMessage('Failed to connect to backend. Please try again later.', false);
+        addMessage('Failed to connect to backend. Please try again later.', false, 'error');
     }
 
     // Function to update connection status indicator
@@ -42,33 +44,53 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else if (type === 'update') {
             messageElement.classList.add('update-message');
         }
-        messageElement.textContent = message;
+        
+        // Format message based on type
+        if (typeof message === 'string') {
+            messageElement.textContent = message;
+        } else {
+            // Handle structured messages
+            const formattedMessage = formatStructuredMessage(message);
+            messageElement.innerHTML = formattedMessage;
+        }
+        
         chatWindow.appendChild(messageElement);
         chatWindow.scrollTop = chatWindow.scrollHeight;
+    }
+
+    // Function to format structured messages
+    function formatStructuredMessage(message) {
+        if (message.steps) {
+            return message.steps.map(step => {
+                const status = step.result.status === 'success' ? '✓' : '✗';
+                const details = step.result.message || step.result.error || '';
+                return `${status} ${step.step.action}: ${details}`;
+            }).join('<br>');
+        }
+        return JSON.stringify(message, null, 2);
     }
 
     // Function to handle WebSocket updates
     function handleUpdate(update) {
         switch (update.type) {
             case 'command_received':
-                addMessage('Command received...', false, 'update');
+                addMessage('Processing your request...', false, 'update');
                 break;
             case 'action_sequence_generated':
-                addMessage('Planning actions...', false, 'update');
-                break;
-            case 'execution_complete':
-                addMessage(`Completed: ${update.data.objective}`, false);
-                // Add detailed results
+                addMessage('Planning the following actions:', false, 'update');
                 update.data.steps.forEach(step => {
-                    if (step.result.status === 'success') {
-                        addMessage(`✓ ${step.step.action}: ${step.result.message || 'Success'}`, false);
-                    } else {
-                        addMessage(`✗ ${step.step.action}: ${step.result.error || 'Failed'}`, false, 'error');
-                    }
+                    addMessage(`• ${step.agent} will ${step.action}`, false, 'update');
                 });
                 break;
+            case 'execution_progress':
+                addMessage(update.data.message, false, 'update');
+                break;
+            case 'execution_complete':
+                addMessage('Task completed!', false);
+                addMessage(update.data, false);  // This will use formatStructuredMessage
+                break;
             case 'error':
-                addMessage(`Error: ${update.data.error}`, false, 'error');
+                addMessage(`Error: ${update.data.detail}`, false, 'error');
                 break;
             case 'pong':
                 // Handle pong response (connection check)
@@ -79,8 +101,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Function to handle errors
     function handleError(message, error) {
         console.error(message, error);
-        addMessage(`Error: ${message}`, false, 'error');
+        let errorMessage = message;
+        if (error.type === 'openai_error') {
+            errorMessage = 'The AI is currently busy. Please try again in a moment.';
+        } else if (error.status === 429) {
+            errorMessage = 'Too many requests. Please wait a minute before trying again.';
+        }
+        addMessage(errorMessage, false, 'error');
         updateStatus('error');
+        
+        // Automatically retry connection if it's a connection error
+        if (message.includes('WebSocket')) {
+            setTimeout(() => {
+                api.initialize().then(initialized => {
+                    if (initialized) {
+                        updateStatus('connected');
+                        addMessage('Reconnected!', false, 'update');
+                    }
+                });
+            }, 5000);
+        }
     }
 
     // Function to handle sending messages
@@ -95,7 +135,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await api.sendCommand(message);
                 chatInput.value = '';
             } catch (error) {
-                addMessage(`Failed to send command: ${error.message}`, false, 'error');
+                if (error.status === 401) {
+                    addMessage('Authentication failed. Please refresh the page.', false, 'error');
+                } else {
+                    addMessage(`Failed to send command: ${error.message}`, false, 'error');
+                }
             } finally {
                 sendButton.disabled = false;
                 updateStatus('connected');
