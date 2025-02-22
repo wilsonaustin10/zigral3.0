@@ -1,30 +1,35 @@
+"""LLM integration for generating action sequences.
+
+This module handles the integration with OpenAI's GPT models for generating
+structured action sequences from user commands.
+"""
+
 import json
 import os
 from typing import Dict, Optional
+from datetime import datetime
+import uuid
 
-from openai import AsyncOpenAI, APIStatusError
-
+from openai import AsyncOpenAI
 from .logger import get_logger
+from .schemas.action_sequence import ActionSequence, ActionStep
 
 logger = get_logger(__name__)
 
-# Global client instance
-_client = None
-
 
 def get_openai_client() -> AsyncOpenAI:
-    """Get or create the OpenAI client instance"""
-    global _client
-    if _client is None:
-        _client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    return _client
+    """Get an instance of the OpenAI client."""
+    return AsyncOpenAI(
+        api_key=os.getenv("OPENAI_API_KEY"),
+        organization=os.getenv("OPENAI_ORG_ID")
+    )
 
 
 async def generate_action_sequence(
     command: str, context: Optional[Dict] = None, client: Optional[AsyncOpenAI] = None
-) -> Dict:
+) -> ActionSequence:
     """
-    Generate an action sequence using OpenAI's GPT model
+    Generate an action sequence using OpenAI's GPT model.
 
     Args:
         command (str): The user's command
@@ -32,20 +37,7 @@ async def generate_action_sequence(
         client (Optional[AsyncOpenAI]): OpenAI client instance for testing
 
     Returns:
-        Dict: Action sequence in the format:
-        {
-            "objective": str,
-            "steps": [
-                {
-                    "agent": str,
-                    "action": str,
-                    "target": Optional[str],
-                    "criteria": Optional[Dict],
-                    "fields": Optional[List[str]]
-                },
-                ...
-            ]
-        }
+        ActionSequence: A validated action sequence model
     """
     try:
         # Use provided client or get default
@@ -65,8 +57,19 @@ async def generate_action_sequence(
             temperature=0.7,
         )
 
-        # Extract and validate the response
-        action_sequence = json.loads(response.choices[0].message.content)
+        # Extract and parse the response
+        action_sequence_dict = json.loads(response.choices[0].message.content)
+        
+        # Add job_id and timestamps if not present
+        if "job_id" not in action_sequence_dict:
+            action_sequence_dict["job_id"] = str(uuid.uuid4())
+        if "created_at" not in action_sequence_dict:
+            action_sequence_dict["created_at"] = datetime.utcnow()
+        if "updated_at" not in action_sequence_dict:
+            action_sequence_dict["updated_at"] = datetime.utcnow()
+
+        # Convert to ActionSequence model for validation
+        action_sequence = ActionSequence(**action_sequence_dict)
         logger.info("Successfully generated action sequence")
 
         return action_sequence
@@ -77,7 +80,7 @@ async def generate_action_sequence(
 
 
 def _prepare_prompt(command: str, context: Optional[Dict] = None) -> str:
-    """Prepare the prompt for the LLM"""
+    """Prepare the prompt for the LLM."""
     prompt = f"Command: {command}\n\n"
 
     if context:
@@ -90,23 +93,48 @@ def _prepare_prompt(command: str, context: Optional[Dict] = None) -> str:
 
 
 def _get_system_prompt() -> str:
-    """Get the system prompt for the LLM"""
+    """Get the system prompt for the LLM."""
     return """You are an AI orchestrator that generates action sequences for sales prospecting and outreach tasks.
 Your role is to break down high-level commands into specific, actionable steps that can be executed by specialized agents.
 
 Available Agents:
-- LinkedIn: Can navigate LinkedIn, search for prospects, and collect information
-- GoogleSheets: Can read from and write to Google Sheets
-- Email: Can compose and send emails
-- Calendar: Can schedule meetings and manage calendar events
+- lincoln: Can navigate LinkedIn, search for prospects, and collect information
+- shaun: Can read from and write to Google Sheets
 
 For each command, generate a JSON object with:
-1. An "objective" field summarizing the goal
-2. A "steps" array containing the sequence of actions, where each step has:
-   - "agent": The agent to perform the action
+1. A "job_id" field with a unique identifier (if not provided)
+2. An "objective" field summarizing the goal
+3. A "steps" array containing the sequence of actions, where each step has:
+   - "agent": The agent to perform the action (must be one of: "lincoln", "shaun")
    - "action": The specific action to take
-   - "target": (optional) The target of the action
+   - "target": (optional) The target of the action (e.g., URL, element selector)
    - "criteria": (optional) Search or filtering criteria
    - "fields": (optional) Fields to collect or update
+   - "timeout": (optional) Timeout in milliseconds (default: 5000)
+
+Example Response:
+{
+    "job_id": "prospect_search_123",
+    "objective": "Find tech CTOs and update prospect list",
+    "steps": [
+        {
+            "agent": "lincoln",
+            "action": "search",
+            "criteria": {
+                "title": ["CTO", "Chief Technology Officer"],
+                "industry": "Technology"
+            },
+            "fields": ["name", "company", "location"]
+        },
+        {
+            "agent": "shaun",
+            "action": "update",
+            "criteria": {
+                "sheet_name": "Tech Prospects",
+                "filters": {"industry": "Technology"}
+            }
+        }
+    ]
+}
 
 Ensure the steps are logical, sequential, and achievable by the specified agents."""

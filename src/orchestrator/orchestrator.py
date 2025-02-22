@@ -54,6 +54,7 @@ from slowapi.util import get_remote_address
 from .agent_commands import AgentCommandManager
 from .llm_integration import generate_action_sequence
 from .logger import get_logger
+from .schemas.action_sequence import ActionSequence, ExecutionResult
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -62,185 +63,77 @@ limiter = Limiter(key_func=get_remote_address)
 logger = get_logger(__name__)
 
 # Initialize OAuth2 scheme
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 
 class Command(BaseModel):
-    """Model for incoming command requests"""
-
+    """Model for incoming commands."""
+    
     command: str
     context: Optional[Dict] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
+    
     @field_validator("command")
-    @classmethod
-    def validate_command(cls, v):
-        if not v or not v.strip():
+    def command_not_empty(cls, v):
+        if not v.strip():
             raise ValueError("Command cannot be empty")
         return v.strip()
 
-    @field_validator("context")
-    @classmethod
-    def validate_context(cls, v):
-        if v is not None:
-            if not isinstance(v, dict):
-                raise ValueError("Context must be a dictionary")
-            for key, value in v.items():
-                if not isinstance(key, str):
-                    raise ValueError("Context keys must be strings")
-                if not isinstance(value, (str, list)):
-                    raise ValueError("Context values must be strings or lists")
-                if isinstance(value, list):
-                    if not all(isinstance(x, str) for x in value):
-                        raise ValueError(
-                            "Context list values must contain only strings"
-                        )
-                    if not value:  # Check if list is empty
-                        raise ValueError("Context list values cannot be empty")
-                elif not value.strip():  # Check if string is empty or whitespace
-                    raise ValueError("Context string values cannot be empty")
-        return v
 
-
-class ActionStep(BaseModel):
-    """Model for individual action steps"""
-
-    agent: str
-    action: str
-    target: Optional[str] = None
-    criteria: Optional[Dict] = None
-    fields: Optional[List[str]] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ActionSequence(BaseModel):
-    """Model for the complete action sequence"""
-
-    objective: str
-    steps: List[ActionStep]
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ErrorResponse(BaseModel):
-    """Model for error responses"""
-
-    error: str
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ExecutionResult(BaseModel):
-    """Model for execution results"""
-
-    objective: str
-    steps: List[Dict]
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-# Enhanced error response
 class DetailedErrorResponse(BaseModel):
-    """Model for detailed error responses"""
-    error: str
+    """Model for detailed error responses."""
+    
+    detail: str
     error_type: str
-    details: Optional[Dict] = None
     status_code: int
 
-    model_config = ConfigDict(from_attributes=True)
 
-
-async def verify_token(token: str = Depends(oauth2_scheme)):
-    """Verify JWT token."""
-    # TODO: Implement proper JWT verification
-    if not token or token != os.getenv("TEMP_AUTH_TOKEN"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return token
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Handle startup and shutdown events."""
-    # Initialize agent command manager
-    app.state.agent_manager = AgentCommandManager()
-    await app.state.agent_manager.initialize()
-    logger.info("Agent command manager initialized")
-    
-    yield
-    
-    # Cleanup on shutdown
-    await app.state.agent_manager.cleanup()
-    logger.info("Agent command manager cleaned up")
-
-
-# Initialize FastAPI app with lifespan manager
-app = FastAPI(
-    title="Zigral Orchestrator",
-    version="3.0.0",
-    description=__doc__,
-    lifespan=lifespan
-)
+# Initialize FastAPI app
+app = FastAPI(title="Zigral Orchestrator")
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # React development server
-        "http://localhost:8080",  # Production frontend
-        os.getenv("FRONTEND_URL", ""),  # Configurable frontend URL
-    ],
+    allow_origins=["*"],  # Update this in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Add rate limiter
+# Add rate limit error handler
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
-class ConnectionManager:
-    """Manage active WebSocket connections."""
+async def verify_token(token: str = Depends(oauth2_scheme)) -> str:
+    """Verify the authentication token."""
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     
-    def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
+    # For development, accept a specific token
+    if token == os.getenv("TEMP_AUTH_TOKEN", "zigral_dev_token_123"):
+        return token
     
-    async def connect(self, websocket: WebSocket, client_id: str):
-        """Connect a new client."""
-        await websocket.accept()
-        self.active_connections[client_id] = websocket
-        logger.info(f"Client {client_id} connected")
-    
-    def disconnect(self, client_id: str):
-        """Disconnect a client."""
-        if client_id in self.active_connections:
-            del self.active_connections[client_id]
-            logger.info(f"Client {client_id} disconnected")
-    
-    async def broadcast(self, message: dict):
-        """Broadcast a message to all connected clients."""
-        disconnected = []
-        for client_id, connection in self.active_connections.items():
-            try:
-                await connection.send_json(message)
-            except WebSocketDisconnect:
-                disconnected.append(client_id)
-            except Exception as e:
-                logger.error(f"Error sending message to client {client_id}: {str(e)}")
-                disconnected.append(client_id)
-        
-        # Clean up disconnected clients
-        for client_id in disconnected:
-            self.disconnect(client_id)
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid authentication credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
-# Initialize connection manager
-manager = ConnectionManager()
+
+@app.on_event("startup")
+async def startup():
+    """Initialize services on startup."""
+    app.state.agent_manager = AgentCommandManager()
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Clean up resources on shutdown."""
+    await app.state.agent_manager.cleanup()
 
 
 @app.post("/command", response_model=Union[ExecutionResult, DetailedErrorResponse])
@@ -251,7 +144,7 @@ async def process_command(
     token: str = Depends(verify_token)
 ):
     """
-    Process a user command and execute the resulting action sequence
+    Process a user command and execute the resulting action sequence.
     """
     logger.info(f"Received command: {command.command}")
     try:
@@ -261,125 +154,86 @@ async def process_command(
             "data": {"command": command.command}
         })
 
-        # Validate command
-        if not command.command:
-            raise HTTPException(status_code=422, detail="Command cannot be empty")
-
         # Generate action sequence
-        action_sequence = await generate_action_sequence(
-            command=command.command, context=command.context
+        action_sequence_dict = await generate_action_sequence(
+            command=command.command,
+            context=command.context
         )
+        
+        # Convert to ActionSequence model for validation
+        action_sequence = ActionSequence(**action_sequence_dict)
         logger.info("Successfully generated action sequence")
         
         # Broadcast action sequence generated
         await manager.broadcast({
             "type": "action_sequence_generated",
-            "data": action_sequence
+            "data": action_sequence.model_dump()
         })
         
         # Execute action sequence
-        results = await app.state.agent_manager.execute_action_sequence(action_sequence)
+        execution_result = await app.state.agent_manager.execute_action_sequence(
+            action_sequence.model_dump()
+        )
         logger.info("Successfully executed action sequence")
         
         # Broadcast execution complete
         await manager.broadcast({
             "type": "execution_complete",
-            "data": {
-                "objective": action_sequence["objective"],
-                "steps": results
-            }
+            "data": execution_result.model_dump()
         })
         
-        return ExecutionResult(
-            objective=action_sequence["objective"],
-            steps=results
-        )
-        
+        return execution_result
+
     except APIStatusError as e:
-        error_response = None
-        if e.status_code == 429:
-            error_response = DetailedErrorResponse(
-                error="Rate limit exceeded",
-                error_type="rate_limit",
-                details={"retry_after": 60},  # Default to 60 seconds for rate limit retry
-                status_code=429
-            )
-            # Broadcast error
-            await manager.broadcast({
-                "type": "error",
-                "data": error_response.model_dump()  # Updated to use model_dump instead of dict
-            })
-            raise HTTPException(
-                status_code=429,
-                detail=error_response.model_dump()
-            )
-        else:
-            error_response = DetailedErrorResponse(
-                error=str(e),
-                error_type="api_error",
-                status_code=e.status_code
-            )
-            # Broadcast error
-            await manager.broadcast({
-                "type": "error",
-                "data": error_response.model_dump()  # Updated to use model_dump instead of dict
-            })
-            raise HTTPException(
-                status_code=e.status_code,
-                detail=error_response.model_dump()
-            )
-        
-    except HTTPException as e:
-        error_response = DetailedErrorResponse(
-            error=str(e.detail),
-            error_type="validation_error",
+        logger.error(f"OpenAI API error: {str(e)}")
+        return DetailedErrorResponse(
+            detail=str(e),
+            error_type="openai_error",
             status_code=e.status_code
         )
-        await manager.broadcast({
-            "type": "error",
-            "data": error_response.dict()
-        })
-        return error_response
-        
     except Exception as e:
-        error_response = DetailedErrorResponse(
-            error="Internal server error",
-            error_type="server_error",
-            details={"message": str(e)},
+        logger.error(f"Error processing command: {str(e)}")
+        return DetailedErrorResponse(
+            detail=str(e),
+            error_type="internal_error",
             status_code=500
         )
-        await manager.broadcast({
-            "type": "error",
-            "data": error_response.dict()
-        })
-        return error_response
 
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "orchestrator",
-        "version": "3.0.0",
-        "agent_manager": hasattr(app.state, "agent_manager")
-    }
+# WebSocket connection manager
+class ConnectionManager:
+    """Manages active WebSocket connections."""
+    
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+    
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+    
+    async def broadcast(self, message: Dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except WebSocketDisconnect:
+                self.disconnect(connection)
+            except Exception as e:
+                logger.error(f"Error broadcasting message: {str(e)}")
+
+
+# Initialize connection manager
+manager = ConnectionManager()
 
 
 @app.websocket("/ws/updates/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):
     """WebSocket endpoint for real-time updates."""
+    await manager.connect(websocket)
     try:
-        await manager.connect(websocket, client_id)
         while True:
-            try:
-                # Wait for messages from the client (can be used for ping/pong)
-                data = await websocket.receive_text()
-                # Echo back to confirm receipt
-                await websocket.send_json({"type": "pong", "data": data})
-            except WebSocketDisconnect:
-                manager.disconnect(client_id)
-                break
-    except Exception as e:
-        logger.error(f"WebSocket error for client {client_id}: {str(e)}")
-        manager.disconnect(client_id)
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)

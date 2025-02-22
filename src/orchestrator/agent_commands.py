@@ -9,11 +9,14 @@ import asyncio
 import json
 from typing import Dict, List, Optional, Any
 from uuid import uuid4
+from datetime import datetime
+import logging
 
 from common.messaging import RabbitMQClient
 from .logger import get_logger
+from .schemas.action_sequence import ActionSequence, ActionResult, ExecutionResult
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 class AgentCommandManager:
     """Manages communication with agents via RabbitMQ."""
@@ -121,7 +124,7 @@ class AgentCommandManager:
             del self.response_futures[correlation_id]
             raise TimeoutError(f"Timeout waiting for Shaun agent response to {command}")
     
-    async def execute_action_sequence(self, sequence: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def execute_action_sequence(self, sequence: Dict[str, Any]) -> ExecutionResult:
         """
         Execute a sequence of actions across multiple agents.
         
@@ -129,56 +132,75 @@ class AgentCommandManager:
             sequence: The action sequence to execute, containing steps for each agent
             
         Returns:
-            List of responses from each step in the sequence
+            ExecutionResult containing the results of each step in the sequence
         """
+        # Convert dict to ActionSequence model for validation
+        action_sequence = ActionSequence(**sequence)
         results = []
+        started_at = datetime.utcnow()
         
-        for step in sequence.get("steps", []):
-            agent = step.get("agent", "").lower()
-            action = step.get("action", "")
+        for step in action_sequence.steps:
+            agent = step.agent.lower()
+            action = step.action
             
             try:
                 if agent == "lincoln":
                     data = {
-                        "search_params": step.get("criteria", {}),
-                        "profile_urls": step.get("target", []) if isinstance(step.get("target"), list) else [step.get("target")] if step.get("target") else [],
-                        "fields": step.get("fields", [])
+                        "search_params": step.criteria or {},
+                        "profile_urls": [step.target] if step.target else [],
+                        "fields": step.fields or []
                     }
-                    result = await self.execute_lincoln_command(action, data)
+                    raw_result = await self.execute_lincoln_command(action, data)
                     
                 elif agent == "shaun":
                     data = {
-                        "prospects": step.get("data", {}).get("prospects", []),
-                        "filters": step.get("criteria", {})
+                        "prospects": step.criteria.get("prospects", []) if step.criteria else [],
+                        "filters": step.criteria.get("filters", {}) if step.criteria else {}
                     }
-                    result = await self.execute_shaun_command(action, data)
+                    raw_result = await self.execute_shaun_command(action, data)
                     
                 else:
                     logger.warning(f"Unknown agent: {agent}")
-                    result = {"status": "error", "error": f"Unknown agent: {agent}"}
+                    raw_result = {"status": "error", "error": f"Unknown agent: {agent}"}
+                
+                # Convert raw result to ActionResult model
+                result = ActionResult(
+                    status=raw_result.get("status", "error"),
+                    message=raw_result.get("message"),
+                    data=raw_result.get("data"),
+                    error=raw_result.get("error")
+                )
                 
                 results.append({
-                    "step": step,
-                    "result": result
+                    "step": step.model_dump(),
+                    "result": result.model_dump()
                 })
                 
-                # If a step fails, we might want to stop the sequence
-                if result.get("status") == "error":
-                    logger.error(f"Step failed: {result.get('error')}")
+                # If a step fails, stop the sequence
+                if result.status == "error":
+                    logger.error(f"Step failed: {result.error}")
                     break
                     
             except Exception as e:
                 logger.error(f"Error executing step: {str(e)}")
+                error_result = ActionResult(
+                    status="error",
+                    error=str(e),
+                    message="Exception during execution"
+                )
                 results.append({
-                    "step": step,
-                    "result": {
-                        "status": "error",
-                        "error": str(e)
-                    }
+                    "step": step.model_dump(),
+                    "result": error_result.model_dump()
                 })
                 break
         
-        return results
+        return ExecutionResult(
+            job_id=action_sequence.job_id,
+            objective=action_sequence.objective,
+            steps=results,
+            started_at=started_at,
+            completed_at=datetime.utcnow()
+        )
     
     async def cleanup(self):
         """Clean up RabbitMQ resources."""
