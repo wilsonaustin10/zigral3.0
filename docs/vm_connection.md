@@ -6,6 +6,44 @@
 - **External IP**: 34.174.193.245
 - **Internal IP**: 10.206.0.2
 - **Machine Type**: e2-standard-2
+- **Path To Our Project**: /home/wilson.austin10/zigral-chrome-embed and /home/wilson_austin10/zigral-vnc
+
+## Deployment Log
+
+### February 22, 2025
+1. Virtual Environment Setup
+   - Created Python virtual environment in `/home/wilson_austin10/zigral-vnc/.venv`
+   - Installed dependencies from `requirements.txt` and `requirements-vnc.txt`
+   - Configured `start_uvicorn.sh` for automated service startup
+
+2. Service Configuration
+   - Orchestrator running on port 8000
+   - Context Manager running on port 8001
+   - Services configured to run with host 0.0.0.0 for external access
+
+3. Firewall Rules
+   - Added network tag 'zigral-chrome-embed' to VM instance
+   - Created firewall rule 'zigral-uvicorn' allowing TCP ports 8000,8001
+   - Source ranges: 0.0.0.0/0 (allowing external access)
+
+4. Service Status
+   - Both services running via start_uvicorn.sh
+   - OpenAPI documentation accessible at http://34.174.193.245:8000/openapi.json
+   - Health endpoints configured at /health for both services
+
+### Service Management
+```bash
+# Start services
+cd /home/wilson_austin10/zigral-vnc && ./start_uvicorn.sh
+
+# Check service status
+curl http://localhost:8000/health
+curl http://localhost:8001/health
+
+# View logs
+tail -f /tmp/orchestrator.log
+tail -f /tmp/context_manager.log
+```
 
 ## Connection Methods
 
