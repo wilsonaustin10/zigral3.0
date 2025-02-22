@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendButton = document.getElementById('send-button');
 
     // VNC Configuration
-    const VNC_HOST = 'http://34.174.193.245';
+    const vncUrl = "/vnc/vnc.html?autoconnect=1&resize=scale&quality=9&compression=0&view_only=0";
     const VNC_PORT = '6080';
     const VNC_PATH = '/vnc.html';
     
