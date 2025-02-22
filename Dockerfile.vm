@@ -24,17 +24,30 @@ RUN apt-get update && apt-get install -y \
 
 # Set up Python environment
 WORKDIR /app
+
+# Copy requirements files
 COPY requirements-vnc.txt .
-RUN pip3 install --no-cache-dir -r requirements-vnc.txt
+COPY src/agents/agentrequirements.txt ./agentrequirements.txt
+
+# Install Python dependencies
+RUN pip3 install --no-cache-dir -r requirements-vnc.txt \
+    && pip3 install --no-cache-dir -r agentrequirements.txt
+
+# Create necessary directories
+RUN mkdir -p /app/src/agents /app/src/common /app/src/context_manager \
+    /root/.vnc /var/log/supervisor /shared /var/log/agents \
+    /app/captures/screenshots /app/captures/html
 
 # Copy application code
-COPY src/agents agents/
-COPY src/utils utils/
+COPY src/agents/base /app/src/agents/base
+COPY src/agents/vnc /app/src/agents/vnc
+COPY src/agents/lincoln /app/src/agents/lincoln
+COPY src/agents/shaun /app/src/agents/shaun
+COPY src/agents/__init__.py /app/src/agents/
+COPY src/common/messaging.py /app/src/common/
+COPY src/context_manager/models.py /app/src/context_manager/
 
 # Set up VNC and noVNC
-RUN mkdir -p /root/.vnc /var/log/supervisor
-
-# Copy configuration files
 COPY docker/config/nginx.conf /etc/nginx/sites-available/default
 COPY docker/config/supervisord.conf /etc/supervisor/conf.d/
 COPY docker/scripts/start.sh /usr/local/bin/
@@ -42,9 +55,12 @@ COPY docker/scripts/start.sh /usr/local/bin/
 # Make scripts executable
 RUN chmod +x /usr/local/bin/start.sh
 
-# Create directories for shared data and logs
-RUN mkdir -p /shared /var/log/agents
+# Set Python path
+ENV PYTHONPATH=/app/src:${PYTHONPATH}
 
-EXPOSE 5900 6080
+# Create directories for shared data and logs
+VOLUME ["/shared", "/var/log/agents", "/app/captures"]
+
+EXPOSE 5900 6080 9222
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"] 

@@ -57,18 +57,31 @@ class BrowserSession:
         logger.info(f"Browser session {session_id} initialized")
     
     async def initialize(self) -> None:
-        """Initialize the browser session."""
+        """Initialize the browser session by connecting to existing Chrome instance."""
         try:
             playwright = await async_playwright().start()
-            self._browser = await playwright.chromium.launch(
-                headless=False,
-                args=['--start-maximized', '--no-sandbox']
+            
+            # Connect to existing Chrome instance
+            self._browser = await playwright.chromium.connect_over_cdp(
+                endpoint_url="http://localhost:9222",
+                timeout=30000
             )
-            self._context = await self._browser.new_context(
-                viewport={'width': 1920, 'height': 1080},
-                accept_downloads=True
-            )
-            self._page = await self._context.new_page()
+            
+            # Get existing context or create new one
+            contexts = self._browser.contexts
+            if contexts:
+                self._context = contexts[0]
+                pages = self._context.pages
+                if pages:
+                    self._page = pages[0]
+                else:
+                    self._page = await self._context.new_page()
+            else:
+                self._context = await self._browser.new_context(
+                    viewport={'width': 1920, 'height': 1080},
+                    accept_downloads=True
+                )
+                self._page = await self._context.new_page()
             
             # Setup error handling
             self._page.on("console", lambda msg: 
@@ -80,22 +93,24 @@ class BrowserSession:
             self._screenshots_dir.mkdir(parents=True, exist_ok=True)
             self._html_dir.mkdir(parents=True, exist_ok=True)
             
-            logger.info("Browser session initialized successfully")
+            logger.info("Successfully connected to Chrome instance in VNC")
             
         except Exception as e:
-            logger.error(f"Failed to initialize browser session: {str(e)}")
+            logger.error(f"Failed to connect to Chrome instance: {str(e)}")
             raise
     
     async def cleanup(self) -> None:
-        """Clean up browser resources."""
+        """Clean up browser resources without closing the main browser instance."""
         try:
+            if self._page and not self._page.is_closed():
+                await self._page.close()
             if self._context:
                 await self._context.close()
-            if self._browser:
-                await self._browser.close()
-            logger.info("Browser resources cleaned up")
+            # Don't close the browser since it's a shared instance
+            logger.info("Browser session resources cleaned up")
         except Exception as e:
             logger.error(f"Error during cleanup: {str(e)}")
+            raise
     
     async def execute_command(self, command: BrowserCommand) -> Dict[str, Any]:
         """Execute a browser command and return the result."""

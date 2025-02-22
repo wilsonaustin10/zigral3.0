@@ -12,6 +12,8 @@ from pathlib import Path
 
 from playwright.async_api import async_playwright, Browser, Page, BrowserContext
 from pydantic import BaseModel
+from ..vnc.screen_parser import ScreenParser, ElementLocation
+import base64
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -41,6 +43,9 @@ class BaseBrowser:
         self._screenshots_dir = Path("captures/screenshots")
         self._html_dir = Path("captures/html")
         self.command_history: List[BrowserCommand] = []
+        self.screen_parser = ScreenParser()
+        self._last_screenshot = None
+        self._screenshot_lock = asyncio.Lock()
         
     async def initialize(self) -> None:
         """Initialize the browser and create a new page."""
@@ -182,4 +187,61 @@ class BaseBrowser:
     
     def is_initialized(self) -> bool:
         """Check if the browser is initialized."""
-        return bool(self._browser and self._context and self._page) 
+        return bool(self._browser and self._context and self._page)
+
+    async def take_screenshot(self) -> bytes:
+        """Take a screenshot of the current browser window."""
+        # Implementation depends on specific browser/VNC setup
+        raise NotImplementedError("Subclasses must implement take_screenshot")
+
+    async def find_element_by_visual(self, description: str) -> Optional[ElementLocation]:
+        """Find an element using visual understanding."""
+        async with self._screenshot_lock:
+            if not self._last_screenshot:
+                self._last_screenshot = await self.take_screenshot()
+            
+            element = await self.screen_parser.find_element(
+                self._last_screenshot,
+                description
+            )
+            
+            if not element:
+                # Try refreshing screenshot and search again
+                self._last_screenshot = await self.take_screenshot()
+                element = await self.screen_parser.find_element(
+                    self._last_screenshot,
+                    description
+                )
+            
+            return element
+
+    async def get_page_layout(self) -> Dict[str, Any]:
+        """Get the current page layout analysis."""
+        async with self._screenshot_lock:
+            screenshot = await self.take_screenshot()
+            return await self.screen_parser.analyze_layout(screenshot)
+
+    async def click_element(self, element: ElementLocation) -> bool:
+        """Click an element at the specified location."""
+        # Implementation depends on specific browser/VNC setup
+        raise NotImplementedError("Subclasses must implement click_element")
+
+    async def type_text(self, element: ElementLocation, text: str) -> bool:
+        """Type text into an element."""
+        # Implementation depends on specific browser/VNC setup
+        raise NotImplementedError("Subclasses must implement type_text")
+
+    async def scroll_to_element(self, element: ElementLocation) -> bool:
+        """Scroll to make an element visible."""
+        # Implementation depends on specific browser/VNC setup
+        raise NotImplementedError("Subclasses must implement scroll_to_element")
+
+    async def wait_for_element(self, description: str, timeout: int = 10) -> Optional[ElementLocation]:
+        """Wait for an element to appear on the screen."""
+        start_time = asyncio.get_event_loop().time()
+        while (asyncio.get_event_loop().time() - start_time) < timeout:
+            element = await self.find_element_by_visual(description)
+            if element:
+                return element
+            await asyncio.sleep(0.5)
+        return None 
