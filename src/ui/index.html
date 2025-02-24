@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zigral - AI Agent Dashboard</title>
+    <link rel="stylesheet" href="./css/styles.css">
+    <link rel="stylesheet" href="./css/chat.css">
+    <!-- Add favicon -->
+    <link rel="icon" type="image/png" href="./img/favicon.png">
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar for Chat -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>Zigral Chat</h2>
+                <!-- Status indicator will be added here by JS -->
+            </div>
+            <div class="chat-window" id="chat-window">
+                <!-- Chat messages will appear here -->
+                <div class="chat-message assistant-message">
+                    Welcome to Zigral! I'm here to help you manage your AI agents.
+                    Type a command to get started.
+                </div>
+            </div>
+            <div class="chat-input-container">
+                <textarea id="chat-input" class="chat-input" 
+                    placeholder="Type your command (e.g., 'Find CTOs in San Francisco')" 
+                    rows="3"></textarea>
+                <button id="send-button" class="send-button">Send</button>
+            </div>
+        </div>
+        
+        <!-- Main content area for VNC embed -->
+        <div class="content-area">
+            <div class="control-panel">
+                <button id="refresh-vnc" class="control-button">
+                    <i class="fas fa-sync"></i> Refresh
+                </button>
+                <button id="fullscreen-vnc" class="control-button">
+                    <i class="fas fa-expand"></i> Fullscreen
+                </button>
+            </div>
+            
+            <iframe id="vnc-iframe"
+                class="workspace-frame"
+                src=""
+                frameborder="0"
+                allowfullscreen="true"
+                title="VNC Workspace">
+            </iframe>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="./js/vnc-client.js"></script>
+
+    <!-- Error handling for scripts -->
+    <script>
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            console.error('Error: ' + msg + '\nURL: ' + url + '\nLine: ' + lineNo + '\nColumn: ' + columnNo + '\nError object: ' + JSON.stringify(error));
+            return false;
+        };
+    </script>
+</body>
+</html> 

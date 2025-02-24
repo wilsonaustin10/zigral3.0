@@ -71,7 +71,7 @@ async def verify_jwt_token(
         )
 
 # Dependency for endpoints that require either API key or JWT
-async def verify_auth(
+async def verify_token(
     api_key: str = Depends(api_key_header),
     token: HTTPAuthorizationCredentials = Security(bearer_scheme)
 ) -> bool:

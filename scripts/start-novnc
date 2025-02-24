@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# Kill any existing websockify processes
+pkill -f websockify
+
+# Start websockify with explicit options
+websockify \
+    --web /usr/share/novnc \
+    --heartbeat 30 \
+    --verbose \
+    6081 localhost:5900

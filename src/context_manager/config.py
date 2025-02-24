@@ -23,10 +23,10 @@ class Settings(BaseSettings):
     CONTEXT_MANAGER_PORT: int = 8001
     
     # Database Configuration
-    DATABASE_URL: str = "postgresql://user:password@localhost:5432/zigral"
+    DATABASE_URL: str = "postgresql://zigral:zigral@localhost:5432/zigral"
     
     # OpenAI Configuration
-    OPENAI_API_KEY: str
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     
     # Service Selection
     SERVICE_NAME: str = "context-manager"
@@ -49,9 +49,10 @@ class Settings(BaseSettings):
     PROSPECTS_WORKSHEET: Optional[str] = None
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file="/home/wilson_austin10/zigral-vnc/.env",
         env_file_encoding="utf-8",
-        extra="allow"
+        extra="allow",
+        case_sensitive=False
     )
 
 @lru_cache
