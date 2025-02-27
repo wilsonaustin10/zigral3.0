@@ -11,6 +11,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
+    python3-venv \
+    python3-full \
     xvfb \
     x11vnc \
     python3-websockify \
@@ -29,9 +31,14 @@ WORKDIR /app
 COPY requirements-vnc.txt .
 COPY src/agents/agentrequirements.txt ./agentrequirements.txt
 
+# Create and activate virtual environment
+RUN python3 -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
+
 # Install Python dependencies
-RUN pip3 install --no-cache-dir -r requirements-vnc.txt \
-    && pip3 install --no-cache-dir -r agentrequirements.txt
+RUN pip3 install --upgrade pip && \
+    pip3 install --no-cache-dir -r requirements-vnc.txt && \
+    pip3 install --no-cache-dir -r agentrequirements.txt
 
 # Create necessary directories
 RUN mkdir -p /app/src/agents /app/src/common /app/src/context_manager \
@@ -49,7 +56,7 @@ COPY src/context_manager/models.py /app/src/context_manager/
 
 # Set up VNC and noVNC
 COPY docker/config/nginx.conf /etc/nginx/sites-available/default
-COPY docker/config/supervisord.conf /etc/supervisor/conf.d/
+COPY docker/config/supervisord.fixed.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/scripts/start.sh /usr/local/bin/
 
 # Make scripts executable
@@ -61,6 +68,6 @@ ENV PYTHONPATH=/app/src:${PYTHONPATH}
 # Create directories for shared data and logs
 VOLUME ["/shared", "/var/log/agents", "/app/captures"]
 
-EXPOSE 5900 6080 9222
+EXPOSE 5900 6080 6081 9222
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"] 

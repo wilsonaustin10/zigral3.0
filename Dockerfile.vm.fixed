@@ -1,0 +1,77 @@
+FROM debian:bookworm-slim
+
+# Prevent interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive \
+    DISPLAY=:0 \
+    RESOLUTION=1920x1080x24 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Install required packages
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-full \
+    xvfb \
+    x11vnc \
+    python3-websockify \
+    novnc \
+    chromium \
+    supervisor \
+    nginx \
+    curl \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up Python environment
+WORKDIR /app
+
+# Copy requirements files
+COPY requirements-vnc.txt .
+COPY src/agents/agentrequirements.txt ./agentrequirements.txt
+
+# Create and activate virtual environment
+RUN python3 -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
+
+# Install Python dependencies
+RUN pip3 install --upgrade pip && \
+    pip3 install --no-cache-dir -r requirements-vnc.txt && \
+    pip3 install --no-cache-dir -r agentrequirements.txt
+
+# Create necessary directories
+RUN mkdir -p /app/src/agents /app/src/common /app/src/context_manager \
+    /root/.vnc /var/log/supervisor /shared /var/log/agents \
+    /app/captures/screenshots /app/captures/html
+
+# Copy application code
+COPY src/agents/base /app/src/agents/base
+COPY src/agents/vnc /app/src/agents/vnc
+COPY src/agents/lincoln /app/src/agents/lincoln
+COPY src/agents/shaun /app/src/agents/shaun
+COPY src/agents/__init__.py /app/src/agents/
+COPY src/common/messaging.py /app/src/common/
+COPY src/context_manager/models.py /app/src/context_manager/
+
+# Set up VNC and noVNC
+COPY docker/config/nginx.conf /etc/nginx/sites-available/default
+COPY docker/config/supervisord.conf /etc/supervisor/conf.d/
+COPY docker/scripts/start.sh /usr/local/bin/
+
+# Copy the fix script
+COPY docker/scripts/fix/fix-supervisord.sh /usr/local/bin/
+
+# Make scripts executable
+RUN chmod +x /usr/local/bin/start.sh /usr/local/bin/fix-supervisord.sh
+
+# Set Python path
+ENV PYTHONPATH=/app/src:${PYTHONPATH}
+
+# Create directories for shared data and logs
+VOLUME ["/shared", "/var/log/agents", "/app/captures"]
+
+EXPOSE 5900 6080 6081 9222
+
+# Use our fix script as the entrypoint
+CMD ["/usr/local/bin/fix-supervisord.sh"] 

@@ -1,6 +1,16 @@
 # Zigral 3.0
 
+**IMPORTANT: The main project code is now located in the `zigral-vnc` directory. Please navigate there for the most up-to-date codebase.**
+
 Zigral is an autonomous sales development application that acts as your virtual sales development representative, coordinating multiple specialized agents for tasks like prospecting and data management.
+
+## Project Structure
+
+This repository has been reorganized for better maintainability:
+
+- **Main Project Code**: Located in the [`zigral-vnc/`](./zigral-vnc/) directory
+- **Documentation**: Available in [`zigral-vnc/docs/`](./zigral-vnc/docs/)
+- **Local Development**: See [`zigral-vnc/docs/local_development.md`](./zigral-vnc/docs/local_development.md)
 
 ## Features
 
@@ -10,49 +20,15 @@ Zigral is an autonomous sales development application that acts as your virtual 
 - Integration with LinkedIn and Google Sheets
 - Reinforcement learning with human-in-the-loop feedback
 
-## Prerequisites
-
-- Python 3.12 or higher
-- Poetry package manager
-- Docker Desktop
-- Git
-
-## Quick Start
-
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/your-org/zigral.git
-   cd zigral
-   ```
-
-2. **Install Dependencies**
-   ```bash
-   poetry install --with test
-   ```
-
-3. **Configure Environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-4. **Start the VDI Environment**
-   ```bash
-   docker-compose -f docker-compose.vdi.yml up -d
-   ```
-
-5. **Access the VDI Interface**
-   - Open `http://34.174.193.245:6080/vnc.html` in your browser
-   - The VNC viewer will connect automatically to the Chrome environment
-
 ## noVNC Integration
 
-Zigral includes a browser-based VNC client (noVNC) that allows users to view and interact with browser automation in real-time. 
+Zigral includes a browser-based VNC client (noVNC) that allows users to view and interact with browser automation in real-time.
 
 ### Quick Start with noVNC
 
 1. Use the startup script to launch the development environment with noVNC:
    ```bash
+   cd zigral-vnc
    ./scripts/start_dev_environment.sh
    ```
 
@@ -64,11 +40,24 @@ Zigral includes a browser-based VNC client (noVNC) that allows users to view and
 
 For detailed information about the noVNC integration, including setup, configuration, and troubleshooting, see the following documentation:
 
-- [noVNC Integration Guide](docs/novnc_integration_guide.md)
-- [VNC Setup](docs/vnc_setup.md)
-- [VM Connection Guide](docs/vm_connection.md)
+- [noVNC Integration Guide](zigral-vnc/docs/novnc_integration_guide.md)
+- [VNC Setup](zigral-vnc/docs/vnc_setup.md)
+- [VM Connection Guide](zigral-vnc/docs/vm_connection.md)
+- [Local Development](zigral-vnc/docs/local_development.md)
+- [Project Cleanup Plan](zigral-vnc/docs/project_cleanup.md)
 
-## Development
+## Prerequisites
 
-1. **Run Tests**
-   ```
+- Python 3.12 or higher
+- Poetry package manager
+- Docker Desktop
+- Git
+
+## Getting Started
+
+Navigate to the main project directory and follow the setup instructions:
+
+```bash
+cd zigral-vnc
+# See README.md in that directory for further instructions
+```

@@ -7,11 +7,17 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     environment:
-      - ENVIRONMENT=production
-      - LOG_LEVEL=INFO
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - REDIS_URL=redis://redis:6379/0
+      - API_HOST=${API_HOST:-0.0.0.0}
+      - API_PORT=${API_PORT:-8000}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://zigral:zigral@postgres:5432/zigral}
+      - SERVICE_NAME=${SERVICE_NAME:-orchestrator}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev_secret_key_for_testing}
     volumes:
       - ./logs:/app/logs
     depends_on:
@@ -27,59 +33,51 @@ services:
 
   # VM for running agents with VNC
   agent-vm:
-    build:
-      context: .
-      dockerfile: Dockerfile.vm
+    image: zigral-vnc-agent-vm
     ports:
-      - "5900:5900"  # VNC
-      - "6080:6080"  # noVNC web client
+      - "${VNC_PORT:-5900}:5900"  # VNC
+      - "${NOVNC_PORT:-6080}:6080"  # noVNC web client
+      - "${VNC_HTTP_PORT:-6081}:6081"  # Alternative noVNC port
     volumes:
       - ./src/agents:/app/agents
       - ./shared:/shared
       - ./logs/agents:/var/log/agents
+      - ./docker/config/supervisord.fixed.conf:/etc/supervisor/conf.d/supervisord.conf
     environment:
       - DISPLAY=:0
-      - RESOLUTION=1920x1080x24
-      - VNC_PASSWORD=${VNC_PASSWORD:-}
+      - RESOLUTION=${RESOLUTION:-1920x1080x24}
+      - VNC_PASSWORD=${VNC_PASSWORD:-zigral_vnc_secure_123}
+      - VNC_HOST=${VNC_HOST:-0.0.0.0}
+      - VNC_PORT=${VNC_PORT:-5900}
       - REDIS_URL=redis://redis:6379/0
-    privileged: true  # Required for browser automation
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "6080"]
+      test: ["CMD", "nc", "-z", "localhost", "5900"]
       interval: 30s
       timeout: 10s
       retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 4G
-    
-  # Redis for state management and caching
+
+  # Redis for caching and message broker
   redis:
-    image: redis:alpine
+    image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
+      interval: 10s
+      timeout: 5s
       retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
 
-  # Monitoring service
+  # Monitoring
   prometheus:
     image: prom/prometheus
     ports:
-      - "9090:9090"
+      - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus-data:/prometheus
+      - ./docker/config/prometheus:/etc/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
     depends_on:
       - zigral-api
       - agent-vm
@@ -88,7 +86,7 @@ services:
   grafana:
     image: grafana/grafana
     ports:
-      - "3000:3000"
+      - "${GRAFANA_PORT:-3000}:3000"
     volumes:
       - grafana-data:/var/lib/grafana
     depends_on:
@@ -98,5 +96,4 @@ services:
 
 volumes:
   redis-data:
-  prometheus-data:
   grafana-data: 

@@ -1,0 +1,33 @@
+FROM debian:bookworm-slim
+
+# Prevent interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive \
+    DISPLAY=:0 \
+    RESOLUTION=1920x1080x24 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Install required packages
+RUN apt-get update && apt-get install -y \
+    supervisor \
+    xvfb \
+    x11vnc \
+    python3-websockify \
+    novnc \
+    nginx \
+    curl \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create necessary directories
+RUN mkdir -p /var/log/supervisor /root/.vnc
+
+# Copy config files
+COPY docker/config/supervisord.test.conf /etc/supervisor/conf.d/supervisord.conf
+COPY docker/scripts/diagnose.sh /usr/local/bin/diagnose.sh
+
+# Make scripts executable
+RUN chmod +x /usr/local/bin/diagnose.sh
+
+# Command to run
+CMD ["/usr/local/bin/diagnose.sh"] 

@@ -1,0 +1,175 @@
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DISPLAY=:20
+
+# Install dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    procps \
+    lsof \
+    python3 \
+    python3-pip \
+    python3-venv \
+    xvfb \
+    x11vnc \
+    xauth \
+    xterm \
+    fluxbox \
+    novnc \
+    python3-websockify \
+    nginx \
+    supervisor \
+    net-tools \
+    curl \
+    ca-certificates \
+    x11-apps \
+    xdotool \
+    xxd \
+    nano \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Setup working directory
+WORKDIR /app
+
+# Create necessary directories
+RUN mkdir -p /app/src/agents/base \
+    && mkdir -p /app/src/agents/lincoln \
+    && mkdir -p /app/src/agents/shaun \
+    && mkdir -p /app/src/agents/vnc \
+    && mkdir -p /app/captures \
+    && mkdir -p /root/.vnc \
+    && mkdir -p /var/log/agents
+
+# Create placeholder requirements files
+RUN touch /app/requirements-vnc.txt \
+    && touch /app/agentrequirements.txt
+
+# Setup VNC password
+RUN mkdir -p /root/.vnc \
+    && x11vnc -storepasswd pass123 /root/.vnc/passwd
+
+# Setup Python environment
+RUN python3 -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
+ENV PYTHONPATH="/app/src:/app"
+
+# Install Python dependencies
+RUN /app/venv/bin/pip install --no-cache-dir selenium websocket-client requests pytest pytest-cov
+
+# Create placeholder agent files
+RUN echo "import time\nprint('Lincoln agent starting')\nwhile True:\n    time.sleep(60)" > /app/src/agents/lincoln/agent.py \
+    && echo "import time\nprint('Shaun agent starting')\nwhile True:\n    time.sleep(60)" > /app/src/agents/shaun/agent.py \
+    && touch /app/src/agents/lincoln/__init__.py \
+    && touch /app/src/agents/shaun/__init__.py \
+    && touch /app/src/agents/base/__init__.py \
+    && touch /app/src/agents/vnc/__init__.py \
+    && touch /app/src/agents/__init__.py
+
+# Create a modified supervisord.conf file without Xvfb
+RUN echo '[supervisord]\n\
+nodaemon=true\n\
+logfile=/var/log/supervisor/supervisord.log\n\
+logfile_maxbytes=50MB\n\
+logfile_backups=10\n\
+loglevel=info\n\
+pidfile=/tmp/supervisord.pid\n\
+\n\
+[program:x11vnc]\n\
+priority=10\n\
+command=/usr/bin/x11vnc -xkb -noxrecord -noxfixes -noxdamage -display :20 -forever -rfbauth /root/.vnc/passwd -rfbport 5900\n\
+autostart=true\n\
+autorestart=true\n\
+startretries=5\n\
+startsecs=5\n\
+environment=DISPLAY=":20"\n\
+stderr_logfile=/var/log/supervisor/x11vnc.err.log\n\
+stdout_logfile=/var/log/supervisor/x11vnc.out.log\n\
+\n\
+[program:websockify]\n\
+priority=20\n\
+command=/usr/bin/websockify --web /usr/share/novnc 6080 localhost:5900\n\
+autostart=true\n\
+autorestart=true\n\
+stderr_logfile=/var/log/supervisor/websockify.err.log\n\
+stdout_logfile=/var/log/supervisor/websockify.out.log\n\
+depends_on=x11vnc\n\
+\n\
+[program:nginx]\n\
+priority=30\n\
+command=/usr/sbin/nginx -g "daemon off;"\n\
+autostart=true\n\
+autorestart=true\n\
+stderr_logfile=/var/log/supervisor/nginx.err.log\n\
+stdout_logfile=/var/log/supervisor/nginx.out.log\n\
+\n\
+[program:lincoln]\n\
+priority=40\n\
+command=/app/venv/bin/python -m agents.lincoln.agent\n\
+directory=/app\n\
+stopasgroup=true\n\
+autostart=true\n\
+autorestart=true\n\
+environment=DISPLAY=":20",PYTHONPATH="/app/src:/app"\n\
+stdout_logfile=/var/log/agents/lincoln.out.log\n\
+stderr_logfile=/var/log/agents/lincoln.err.log\n\
+\n\
+[program:shaun]\n\
+priority=50\n\
+command=/app/venv/bin/python -m agents.shaun.agent\n\
+directory=/app\n\
+stopasgroup=true\n\
+autostart=true\n\
+autorestart=true\n\
+environment=DISPLAY=":20",PYTHONPATH="/app/src:/app"\n\
+stdout_logfile=/var/log/agents/shaun.out.log\n\
+stderr_logfile=/var/log/agents/shaun.err.log\n' > /etc/supervisor/conf.d/supervisord.conf
+
+# Create startup script with diagnostic information
+RUN echo '#!/bin/bash\n\
+set -x\n\
+\n\
+echo "=== DIAGNOSTIC INFORMATION ==="\n\
+echo "Working directory: $(pwd)"\n\
+echo "DISPLAY: $DISPLAY"\n\
+echo "PYTHONPATH: $PYTHONPATH"\n\
+echo "PATH: $PATH"\n\
+\n\
+echo "Listing directory contents:"\n\
+ls -la /app\n\
+\n\
+echo "Checking for X server:"\n\
+which Xvfb\n\
+\n\
+echo "Checking for VNC password file:"\n\
+ls -la /root/.vnc/passwd\n\
+\n\
+echo "Starting Xvfb..."\n\
+Xvfb :20 -screen 0 1366x768x16 &\n\
+XVFB_PID=$!\n\
+sleep 2\n\
+\n\
+echo "Checking Xvfb process:"\n\
+ps aux | grep Xvfb\n\
+\n\
+echo "Testing X11 connection:"\n\
+DISPLAY=:20 xdpyinfo\n\
+\n\
+echo "Starting supervisord with verbose output"\n\
+mkdir -p /var/log/supervisor\n\
+supervisord -c /etc/supervisor/conf.d/supervisord.conf -n | tee /var/log/supervisor/supervisord.log\n\
+\n\
+# If supervisor fails, keep container alive for debugging\n\
+if [ $? -ne 0 ]; then\n\
+  echo "Supervisord failed, keeping container alive for debugging"\n\
+  tail -f /dev/null\n\
+fi\n' > /app/start.sh
+
+# Make the startup script executable
+RUN chmod +x /app/start.sh
+
+# Expose ports
+EXPOSE 5900 6080 6081 9222
+
+# Set the entrypoint to the startup script
+ENTRYPOINT ["/app/start.sh"] 
