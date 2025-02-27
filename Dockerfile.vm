@@ -11,6 +11,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
+    python3-venv \
+    python3-full \
     xvfb \
     x11vnc \
     python3-websockify \
@@ -29,9 +31,14 @@ WORKDIR /app
 COPY requirements-vnc.txt .
 COPY src/agents/agentrequirements.txt ./agentrequirements.txt
 
+# Create and activate virtual environment
+RUN python3 -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
+
 # Install Python dependencies
-RUN pip3 install --no-cache-dir -r requirements-vnc.txt \
-    && pip3 install --no-cache-dir -r agentrequirements.txt
+RUN pip3 install --upgrade pip && \
+    pip3 install --no-cache-dir -r requirements-vnc.txt && \
+    pip3 install --no-cache-dir -r agentrequirements.txt
 
 # Create necessary directories
 RUN mkdir -p /app/src/agents /app/src/common /app/src/context_manager \

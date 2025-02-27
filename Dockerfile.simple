@@ -1,0 +1,122 @@
+FROM ubuntu:20.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DISPLAY=:1
+ENV VNC_RESOLUTION=1280x800
+ENV VNC_PASSWORD=zigral
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    xvfb \
+    x11vnc \
+    fluxbox \
+    supervisor \
+    net-tools \
+    wget \
+    git \
+    python3 \
+    python3-pip \
+    chromium-browser
+
+# Install noVNC and websockify properly
+RUN mkdir -p /usr/local/share/novnc \
+    && git clone https://github.com/novnc/noVNC.git /usr/local/share/novnc \
+    && ln -s /usr/local/share/novnc/vnc.html /usr/local/share/novnc/index.html \
+    && pip3 install websockify
+
+# Create app directory
+RUN mkdir -p /app
+
+# Set working directory
+WORKDIR /app
+
+# Set VNC password
+RUN mkdir -p /root/.vnc \
+    && x11vnc -storepasswd "zigral" /root/.vnc/passwd
+
+# Configure fluxbox
+RUN mkdir -p /root/.fluxbox
+RUN echo '#!/bin/sh' > /root/.fluxbox/startup \
+    && echo 'chromium-browser --no-sandbox --disable-gpu https://google.com &' >> /root/.fluxbox/startup \
+    && echo 'exec fluxbox' >> /root/.fluxbox/startup \
+    && chmod +x /root/.fluxbox/startup
+
+# Create directories for logs
+RUN mkdir -p /var/log
+
+# Create startup script with diagnostics 
+RUN echo '#!/bin/bash' > /app/start.sh \
+    && echo 'echo "Working directory: $(pwd)"' >> /app/start.sh \
+    && echo 'echo "Displaying environment variables:"' >> /app/start.sh \
+    && echo 'env' >> /app/start.sh \
+    && echo 'echo "Network interfaces:"' >> /app/start.sh \
+    && echo 'echo "Running inside Docker container"' >> /app/start.sh \
+    && echo 'echo "Creating Xvfb lock file to ensure proper initialization"' >> /app/start.sh \
+    && echo 'mkdir -p /tmp/.X11-unix' >> /app/start.sh \
+    && echo 'chmod 1777 /tmp/.X11-unix' >> /app/start.sh \
+    && echo 'mkdir -p /var/log/supervisor' >> /app/start.sh \
+    && echo 'echo "Starting supervisord..."' >> /app/start.sh \
+    && echo 'exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf' >> /app/start.sh \
+    && chmod +x /app/start.sh
+
+# Create wait-for-xvfb script with enhanced debugging
+RUN echo '#!/bin/bash' > /app/wait-for-xvfb.sh \
+    && echo 'echo "Waiting for Xvfb to be ready..."' >> /app/wait-for-xvfb.sh \
+    && echo 'i=0' >> /app/wait-for-xvfb.sh \
+    && echo 'while [ ! -e "/tmp/.X11-unix/X1" ] && [ $i -lt 30 ]; do' >> /app/wait-for-xvfb.sh \
+    && echo '  echo "Waiting for Xvfb... $i/30"' >> /app/wait-for-xvfb.sh \
+    && echo '  sleep 1' >> /app/wait-for-xvfb.sh \
+    && echo '  i=$((i+1))' >> /app/wait-for-xvfb.sh \
+    && echo 'done' >> /app/wait-for-xvfb.sh \
+    && echo 'if [ -e "/tmp/.X11-unix/X1" ]; then' >> /app/wait-for-xvfb.sh \
+    && echo '  echo "Xvfb is ready"' >> /app/wait-for-xvfb.sh \
+    && echo '  echo "Listing X11 socket directory:"' >> /app/wait-for-xvfb.sh \
+    && echo '  ls -la /tmp/.X11-unix/' >> /app/wait-for-xvfb.sh \
+    && echo '  echo "Starting x11vnc..."' >> /app/wait-for-xvfb.sh \
+    && echo '  exec x11vnc -display :1 -rfbauth /root/.vnc/passwd -forever -shared -noxdamage -noxfixes -verbose 2>&1 | tee /var/log/x11vnc.log' >> /app/wait-for-xvfb.sh \
+    && echo 'else' >> /app/wait-for-xvfb.sh \
+    && echo '  echo "ERROR: Xvfb did not start properly!"' >> /app/wait-for-xvfb.sh \
+    && echo '  exit 1' >> /app/wait-for-xvfb.sh \
+    && echo 'fi' >> /app/wait-for-xvfb.sh \
+    && chmod +x /app/wait-for-xvfb.sh
+
+# Create websockify launcher script
+RUN echo '#!/bin/bash' > /app/launch-websockify.sh \
+    && echo 'echo "Starting websockify..."' >> /app/launch-websockify.sh \
+    && echo 'cd /usr/local/share/novnc' >> /app/launch-websockify.sh \
+    && echo 'websockify --web=. 6080 localhost:5900' >> /app/launch-websockify.sh \
+    && chmod +x /app/launch-websockify.sh
+
+# Configure supervisord
+RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'nodaemon=true' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '[program:xvfb]' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'command=/usr/bin/Xvfb :1 -screen 0 %(ENV_VNC_RESOLUTION)sx24 -ac -nolisten tcp' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'stdout_logfile=/var/log/xvfb.log' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'stderr_logfile=/var/log/xvfb.err' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'priority=1' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '[program:x11vnc]' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'command=/app/wait-for-xvfb.sh' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'stdout_logfile=/var/log/x11vnc_stdout.log' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'stderr_logfile=/var/log/x11vnc_stderr.log' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'priority=10' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '[program:fluxbox]' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'command=/usr/bin/fluxbox' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'priority=15' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '[program:websockify]' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'command=/app/launch-websockify.sh' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'priority=20' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'stdout_logfile=/var/log/websockify.log' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'stderr_logfile=/var/log/websockify.err' >> /etc/supervisor/conf.d/supervisord.conf
+
+# Set up the entrypoint
+ENTRYPOINT ["/app/start.sh"] 

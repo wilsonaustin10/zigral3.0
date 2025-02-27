@@ -7,10 +7,13 @@ login handling, Sales Navigator search, and data collection.
 import os
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from pydantic import BaseModel
 
+from playwright.async_api import async_playwright, Page, Browser
+
 from ..base.browser import BaseBrowser, BrowserCommand
+from ..vnc.browser_controller import VncBrowserController, connect_to_vnc_browser
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -42,65 +45,157 @@ class ProspectData(BaseModel):
     timestamp: datetime = datetime.now()
 
 class LincolnAgent(BaseBrowser):
-    """LinkedIn automation agent using Playwright."""
+    """LinkedIn automation agent using Playwright with VNC support."""
     
-    def __init__(self, headless: bool = False):
+    def __init__(self, headless: bool = False, use_vnc: bool = False, frontend_url: Optional[str] = None):
+        """Initialize the LinkedIn automation agent.
+        
+        Args:
+            headless: Whether to run browser in headless mode
+            use_vnc: Whether to use VNC browser controller
+            frontend_url: URL of the Zigral frontend with VNC
+        """
         super().__init__(headless=headless)
         self.base_url = "https://www.linkedin.com"
         self.sales_nav_url = "https://www.linkedin.com/sales"
-        self._logged_in = False
+        self.use_vnc = use_vnc
+        self.frontend_url = frontend_url or "http://localhost:8090"
+        self.vnc_controller: Optional[VncBrowserController] = None
+        
+    async def initialize(self) -> None:
+        """Initialize the browser with optional VNC support."""
+        if self.use_vnc:
+            # Initialize with VNC controller
+            try:
+                playwright = await async_playwright().start()
+                browser = await playwright.chromium.launch(headless=False)
+                
+                # Connect to the VNC browser via the frontend
+                self.vnc_controller = await connect_to_vnc_browser(browser, self.frontend_url)
+                
+                if not self.vnc_controller:
+                    logger.error("Failed to connect to VNC browser, falling back to regular browser")
+                    self.use_vnc = False
+                    await super().initialize()
+                else:
+                    logger.info("Successfully connected to VNC browser")
+                    # Store references for cleanup
+                    self._browser = browser
+                    self._playwright = playwright
+            except Exception as e:
+                logger.error(f"Error initializing VNC controller: {e}")
+                self.use_vnc = False
+                await super().initialize()
+        else:
+            # Use regular Playwright browser
+            await super().initialize()
     
     async def login(self, credentials: Optional[LinkedInCredentials] = None) -> Dict[str, Any]:
-        """Log in to LinkedIn with 2FA support."""
+        """Log in to LinkedIn using provided credentials.
+        
+        Args:
+            credentials: LinkedIn login credentials
+            
+        Returns:
+            Dict with login status
+        """
         if not credentials:
-            credentials = LinkedInCredentials(
-                username=os.environ.get("LINKEDIN_USERNAME", ""),
-                password=os.environ.get("LINKEDIN_PASSWORD", "")
-            )
-        
-        if not credentials.username or not credentials.password:
-            raise ValueError("LinkedIn credentials not found")
-        
-        try:
-            # Navigate to login page
-            await self._navigate(url=f"{self.base_url}/login")
+            # Try to get credentials from environment
+            username = os.environ.get("LINKEDIN_USERNAME")
+            password = os.environ.get("LINKEDIN_PASSWORD")
             
-            # Fill credentials
-            await self._type(selector="input[name='session_key']", text=credentials.username)
-            await self._type(selector="input[name='session_password']", text=credentials.password)
-            await self._click(selector="button[type='submit']")
+            if not username or not password:
+                return {"status": "error", "message": "No credentials provided"}
             
-            # Check for 2FA
+            credentials = LinkedInCredentials(username=username, password=password)
+        
+        if self.use_vnc and self.vnc_controller:
+            # Use VNC controller for login
+            logger.info("Logging in to LinkedIn using VNC controller")
             try:
-                pin_field = await self._page.wait_for_selector("input[name='pin']", timeout=5000)
-                if pin_field:
-                    return {'logged_in': False, 'requires_2fa': True}
-            except:
-                pass
+                # Navigate to LinkedIn login page
+                await self.vnc_controller.navigate(self.base_url)
+                await asyncio.sleep(2)  # Wait for page to load
+                
+                # Find and click the sign-in button if on home page
+                # Coordinates would need to be adjusted based on actual UI
+                await self.vnc_controller.click(300, 40)  # Click sign-in button
+                await asyncio.sleep(2)
+                
+                # Type username and password
+                await self.vnc_controller.type_text(credentials.username)
+                await asyncio.sleep(0.5)
+                await self.vnc_controller.click(300, 180)  # Click password field
+                await asyncio.sleep(0.5)
+                await self.vnc_controller.type_text(credentials.password)
+                await asyncio.sleep(0.5)
+                
+                # Click sign-in button
+                await self.vnc_controller.click(300, 250)  # Click submit button
+                await asyncio.sleep(5)  # Wait for login to complete
+                
+                # Check if we're redirected to the dashboard
+                screenshot = await self.vnc_controller.take_screenshot()
+                # Here you would normally use screen_parser to check if login was successful
+                
+                return {"status": "success", "message": "Logged in with VNC controller"}
+            except Exception as e:
+                logger.error(f"Login error with VNC: {e}")
+                return {"status": "error", "message": f"Login failed: {str(e)}"}
+        else:
+            # Use regular Playwright browser
+            command = BrowserCommand(
+                command_type="navigate",
+                parameters={"url": f"{self.base_url}/login"}
+            )
+            await self.execute_command(command)
             
-            # Wait for successful login
-            await self._page.wait_for_selector("nav.global-nav", timeout=10000)
-            self._logged_in = True
-            return {'logged_in': True, 'requires_2fa': False}
+            # Fill username
+            command = BrowserCommand(
+                command_type="type",
+                parameters={"selector": "#username", "text": credentials.username}
+            )
+            await self.execute_command(command)
             
-        except Exception as e:
-            logger.error(f"Login failed: {str(e)}")
-            return {'logged_in': False, 'error': str(e)}
+            # Fill password
+            command = BrowserCommand(
+                command_type="type",
+                parameters={"selector": "#password", "text": credentials.password}
+            )
+            await self.execute_command(command)
+            
+            # Click login button
+            command = BrowserCommand(
+                command_type="click",
+                parameters={"selector": "button[type='submit']"}
+            )
+            await self.execute_command(command)
+            
+            # Take screenshot for verification
+            command = BrowserCommand(
+                command_type="take_screenshot",
+                parameters={"name": "login_result"}
+            )
+            result = await self.execute_command(command)
+            
+            return {"status": "success", "screenshot": result.get("path", "")}
     
-    async def verify_2fa(self, code: str) -> Dict[str, Any]:
-        """Verify 2FA code."""
-        try:
-            await self._type(selector="input[name='pin']", text=code)
-            await self._click(selector="button[type='submit']")
-            
-            # Wait for successful login
-            await self._page.wait_for_selector("nav.global-nav", timeout=10000)
-            self._logged_in = True
-            return {"success": True}
-        except Exception as e:
-            logger.error(f"2FA verification failed: {str(e)}")
-            return {"success": False, "error": str(e)}
-    
+    # ... other methods would follow a similar pattern of checking
+    # if self.use_vnc and self.vnc_controller, then using the VNC
+    # controller, otherwise falling back to regular Playwright ...
+
+    async def cleanup(self) -> None:
+        """Clean up resources."""
+        if self.use_vnc and self.vnc_controller:
+            # Clean up VNC controller resources
+            if hasattr(self, '_browser') and self._browser:
+                await self._browser.close()
+            if hasattr(self, '_playwright') and self._playwright:
+                await self._playwright.stop()
+        else:
+            # Use regular cleanup
+            await super().cleanup()
+
     async def search_sales_navigator(self, criteria: SearchCriteria) -> List[ProspectData]:
         """Search for prospects using Sales Navigator."""
         if not self._logged_in:

@@ -1,0 +1,141 @@
+FROM ubuntu:20.04
+
+# Avoid interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install necessary packages
+RUN apt-get update && apt-get install -y \
+    xvfb \
+    x11vnc \
+    fluxbox \
+    supervisor \
+    python3 \
+    python3-pip \
+    python3-venv \
+    chromium-browser \
+    websockify \
+    net-tools \
+    curl \
+    wget \
+    git \
+    nano \
+    procps \
+    xterm \
+    unzip \
+    dbus-x11 \
+    sudo \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install noVNC
+RUN mkdir -p /usr/local/share/novnc \
+    && git clone https://github.com/novnc/noVNC.git /usr/local/share/novnc \
+    && git clone https://github.com/novnc/websockify /usr/local/share/novnc/utils/websockify \
+    && ln -s /usr/local/share/novnc/vnc.html /usr/local/share/novnc/index.html
+
+# Create working directory
+RUN mkdir -p /app
+WORKDIR /app
+
+# Set up VNC password
+RUN mkdir -p /root/.vnc \
+    && x11vnc -storepasswd "zigral" /root/.vnc/passwd
+
+# Create directories for captures and logs
+RUN mkdir -p /app/captures/screenshots \
+    && mkdir -p /app/captures/html \
+    && mkdir -p /app/logs \
+    && mkdir -p /app/src/agents/lincoln \
+    && mkdir -p /app/src/agents/shaun
+
+# Create placeholder files for agents
+RUN touch /app/src/agents/lincoln/__init__.py \
+    && touch /app/src/agents/shaun/__init__.py
+
+# Environment variables
+ENV DISPLAY=:20
+ENV PATH="/app/venv/bin:${PATH}"
+ENV PYTHONPATH="/app/src:/app"
+
+# Set up Python environment
+RUN python3 -m venv /app/venv \
+    && /app/venv/bin/pip install --upgrade pip \
+    && /app/venv/bin/pip install \
+        playwright \
+        pytest \
+        aiohttp \
+        fastapi \
+        uvicorn \
+        aioconsole \
+        opencv-python-headless \
+        numpy \
+        pillow \
+        pydantic
+
+# Setup Fluxbox to start Chromium
+RUN mkdir -p /root/.fluxbox
+RUN echo '#!/bin/sh' > /root/.fluxbox/startup \
+    && echo 'chromium-browser --no-sandbox --start-maximized &' >> /root/.fluxbox/startup \
+    && echo 'exec fluxbox' >> /root/.fluxbox/startup \
+    && chmod +x /root/.fluxbox/startup
+
+# Create a diagnostic startup script
+RUN echo '#!/bin/bash' > /app/start.sh \
+    && echo 'echo "Working directory: $(pwd)"' >> /app/start.sh \
+    && echo 'echo "DISPLAY: $DISPLAY"' >> /app/start.sh \
+    && echo 'echo "PYTHONPATH: $PYTHONPATH"' >> /app/start.sh \
+    && echo 'echo "PATH: $PATH"' >> /app/start.sh \
+    && echo 'echo "Contents of /app:"' >> /app/start.sh \
+    && echo 'ls -la /app' >> /app/start.sh \
+    && echo 'echo "Checking X server..."' >> /app/start.sh \
+    && echo 'ps aux | grep Xvfb' >> /app/start.sh \
+    && echo 'echo "VNC password file: /root/.vnc/passwd"' >> /app/start.sh \
+    && echo 'ls -la /root/.vnc/passwd' >> /app/start.sh \
+    && chmod +x /app/start.sh
+
+# Copy agent requirements and install
+COPY agentrequirements.txt /app/agentrequirements.txt
+RUN test -f /app/agentrequirements.txt && /app/venv/bin/pip install -r /app/agentrequirements.txt || echo "No agent requirements file found"
+
+# Create supervisord configuration
+RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'nodaemon=true' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '[program:xvfb]' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'command=Xvfb :20 -screen 0 1366x768x16' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '[program:x11vnc]' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'command=x11vnc -forever -usepw -display :20 -shared' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '[program:fluxbox]' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'command=fluxbox' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'environment=DISPLAY=:20' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '[program:websockify]' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'command=websockify --web=/usr/local/share/novnc 6080 localhost:5900' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '[program:chromium]' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'command=chromium-browser --no-sandbox --start-maximized --disable-session-crashed-bubble --disable-infobars' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'environment=DISPLAY=:20' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '[program:lincoln]' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'command=/app/venv/bin/python -c "import time; time.sleep(1000000)"' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'directory=/app' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'environment=DISPLAY=:20,PYTHONPATH=/app/src:/app' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo '[program:shaun]' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'command=/app/venv/bin/python -c "import time; time.sleep(1000000)"' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'directory=/app' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'environment=DISPLAY=:20,PYTHONPATH=/app/src:/app' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf \
+    && echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf
+
+# Run the diagnostic script and then supervisord
+CMD ["/bin/bash", "-c", "/app/start.sh && exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf"] 

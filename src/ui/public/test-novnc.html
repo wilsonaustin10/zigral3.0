@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>noVNC Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        #status { margin: 20px 0; padding: 10px; background: #f5f5f5; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        pre { background: #f0f0f0; padding: 10px; border-radius: 5px; overflow: auto; }
+    </style>
+</head>
+<body>
+    <h1>noVNC Library Test</h1>
+    <div id="status">Loading noVNC libraries...</div>
+    <pre id="output"></pre>
+
+    <script>
+        const status = document.getElementById('status');
+        const output = document.getElementById('output');
+        const log = (msg) => {
+            output.textContent += msg + '\n';
+            console.log(msg);
+        };
+
+        // Load scripts sequentially
+        const loadScript = (src) => {
+            return new Promise((resolve, reject) => {
+                log(`Loading: ${src}`);
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = () => {
+                    log(`Successfully loaded: ${src}`);
+                    resolve();
+                };
+                script.onerror = (e) => {
+                    log(`Failed to load: ${src}`);
+                    reject(new Error(`Failed to load script: ${src}`));
+                };
+                document.head.appendChild(script);
+            });
+        };
+
+        // Load all required noVNC scripts
+        async function loadNoVNC() {
+            try {
+                // Load dependencies in the correct order
+                await loadScript('/novnc/vendor/pako/pako.js');
+                await loadScript('/novnc/core/util/logging.js');
+                await loadScript('/novnc/core/util/browser.js');
+                await loadScript('/novnc/core/util/events.js');
+                await loadScript('/novnc/core/util/eventtarget.js');
+                await loadScript('/novnc/core/util/util.js');
+                await loadScript('/novnc/core/util/element.js');
+                await loadScript('/novnc/core/display.js');
+                await loadScript('/novnc/core/input/keysym.js');
+                await loadScript('/novnc/core/input/keysymdef.js');
+                await loadScript('/novnc/core/input/keyboard.js');
+                await loadScript('/novnc/core/input/mouse.js'); 
+                await loadScript('/novnc/core/encodings.js');
+                await loadScript('/novnc/core/websock.js');
+                await loadScript('/novnc/core/rfb.js');
+
+                // Check if RFB is defined
+                if (typeof RFB !== 'undefined') {
+                    status.className = 'success';
+                    status.textContent = 'All noVNC libraries loaded successfully! RFB class is available.';
+                    log('RFB class: ' + (typeof RFB));
+                    log('RFB version info available: ' + (RFB.version ? 'Yes' : 'No'));
+                } else {
+                    status.className = 'error';
+                    status.textContent = 'RFB class not found even after loading all scripts!';
+                }
+            } catch (error) {
+                status.className = 'error';
+                status.textContent = 'Error loading noVNC libraries: ' + error.message;
+                log('Error: ' + error.message);
+            }
+        }
+
+        // Start loading scripts
+        loadNoVNC();
+    </script>
+</body>
+</html> 

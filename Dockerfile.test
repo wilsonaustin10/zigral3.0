@@ -1,0 +1,11 @@
+FROM debian:bookworm-slim
+# Prevent interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive
+# Install required packages
+RUN apt-get update && apt-get install -y supervisor && rm -rf /var/lib/apt/lists/*
+# Create necessary directories
+RUN mkdir -p /var/log/supervisor
+# Copy config file
+COPY docker/config/supervisord.test.conf /etc/supervisor/conf.d/supervisord.conf
+# Command to run
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
